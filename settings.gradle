@@ -1,3 +1,4 @@
 rootProject.name = 'akka-websocket'
 include 'client'
+include 'client-okhttp'
 include 'sample'
