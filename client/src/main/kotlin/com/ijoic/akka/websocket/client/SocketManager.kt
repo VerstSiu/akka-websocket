@@ -17,11 +17,7 @@
  */
 package com.ijoic.akka.websocket.client
 
-import akka.actor.ActorRef
-import akka.actor.Cancellable
-import akka.actor.Props
-import akka.actor.Terminated
-import akka.persistence.AbstractPersistentActor
+import akka.actor.*
 import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.message.impl.allMessages
 import com.ijoic.akka.websocket.message.impl.dispatchMessage
@@ -40,7 +36,7 @@ import java.time.Duration
 class SocketManager(
   private val config: SocketConfig,
   private val requester: ActorRef,
-  client: SocketClient? = null): AbstractPersistentActor() {
+  client: SocketClient? = null): AbstractActor() {
 
   private val client: SocketClient = client ?: ClientFactory.loadClientInstance()
 
@@ -53,28 +49,8 @@ class SocketManager(
     self.tell(message, self)
   }
 
-  override fun createReceiveRecover(): Receive {
-    return receiveBuilder()
-//      .match(SnapshotOffer::class.java) {
-//        println("resume snapshot: $it")
-//        self.forward(it.snapshot(), context)
-//      }
-//      .match(SendMessage::class.java) {
-//        println("resume message: $it")
-//
-//        if (it !is QueueMessage) {
-//          self.forward(ResumedSendMessage(it), context)
-//        }
-//      }
-      .build()
-  }
-
   override fun createReceive(): Receive {
     return waitingForReplies(ClientStateImpl.blank)
-  }
-
-  override fun persistenceId(): String {
-    return "${self.path()}::${config.url}"
   }
 
   private fun dispatchSendMessage(status: ClientState, msg: SendMessage) {
@@ -233,33 +209,8 @@ class SocketManager(
 
   private fun waitingForReplies(status: ClientState): Receive {
     return receiveBuilder()
-      .match(ResumedSnapshot::class.java) {
-        val editStatus = status.edit()
-
-        it.msgList.forEach { message ->
-          editStatus.upgradeMessageList(message)
-        }
-
-        it.msgList.forEach { message ->
-          dispatchSendMessage(editStatus, message)
-        }
-      }
-      .match(ResumedSendMessage::class.java) {
-        dispatchSendMessage(status, it.msg)
-      }
       .match(SendMessage::class.java) {
-        if (it is QueueMessage) {
-          dispatchSendMessage(status, it)
-        } else {
-          persist(it) { msg ->
-            val editStatus = status.edit()
-
-            if (editStatus.upgradeMessageList(msg)) {
-              saveSnapshot(ResumedSnapshot(editStatus.messageList))
-            }
-            dispatchSendMessage(editStatus, msg)
-          }
-        }
+        dispatchSendMessage(status, it)
       }
       .match(SocketMessage::class.java) {
         requester.tell(it, self)
@@ -295,16 +246,6 @@ class SocketManager(
    * Ping message
    */
   private object PingMessage
-
-  /**
-   * Resumed send message
-   */
-  private class ResumedSendMessage(val msg: SendMessage)
-
-  /**
-   * Resumed snapshot
-   */
-  private class ResumedSnapshot(val msgList: List<SendMessage>)
 
   companion object {
     /**
