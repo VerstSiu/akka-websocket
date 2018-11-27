@@ -18,7 +18,6 @@
 package com.ijoic.akka.websocket.state
 
 import com.ijoic.akka.websocket.message.MessageBox
-import com.ijoic.akka.websocket.message.SendMessage
 
 /**
  * Mutable client state
@@ -40,9 +39,4 @@ internal interface MutableClientState: ClientState {
    * Wait for connect status (read & write access)
    */
   override var waitForConnect: Boolean
-
-  /**
-   * Upgrade message list
-   */
-  fun upgradeMessageList(message: SendMessage): Boolean
 }

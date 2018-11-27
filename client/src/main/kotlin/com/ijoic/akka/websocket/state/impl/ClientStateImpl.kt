@@ -18,7 +18,6 @@
 package com.ijoic.akka.websocket.state.impl
 
 import com.ijoic.akka.websocket.message.MessageBox
-import com.ijoic.akka.websocket.message.SendMessage
 import com.ijoic.akka.websocket.message.impl.MessageBoxImpl
 import com.ijoic.akka.websocket.state.ClientState
 import com.ijoic.akka.websocket.state.SocketState
@@ -30,7 +29,6 @@ import com.ijoic.akka.websocket.state.SocketState
  */
 internal class ClientStateImpl(
   override val state: SocketState = SocketState.DISCONNECTED,
-  override val messageList: List<SendMessage> = emptyList(),
   override val messages: MessageBox = MessageBoxImpl.blank,
   override val waitForConnect: Boolean = false
 ): ClientState {

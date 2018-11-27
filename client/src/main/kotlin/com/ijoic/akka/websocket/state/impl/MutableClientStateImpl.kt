@@ -17,7 +17,6 @@
  */
 package com.ijoic.akka.websocket.state.impl
 
-import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.state.ClientState
 import com.ijoic.akka.websocket.state.MutableClientState
 
@@ -29,51 +28,8 @@ import com.ijoic.akka.websocket.state.MutableClientState
 internal class MutableClientStateImpl(
   src: ClientState = ClientStateImpl.blank): MutableClientState {
 
-  private val oldMessageList = src.messageList
-  private var _messageList: MutableList<SendMessage>? = null
-
-  private val editMessageList: MutableList<SendMessage>
-    get() {
-      return _messageList ?: oldMessageList
-        .toMutableList()
-        .also { _messageList = it }
-    }
-
   override var state = src.state
-
-  override val messageList: List<SendMessage>
-    get() = _messageList ?: oldMessageList
-
   override var messages = src.messages
   override var waitForConnect = src.waitForConnect
-
-  override fun upgradeMessageList(message: SendMessage): Boolean {
-    val messageList = this.messageList
-
-    when(message) {
-      is AppendMessage,
-      is ReplaceMessage -> if (!messageList.contains(message)) {
-        editMessageList.add(message)
-        return true
-      }
-      is ClearAppendMessage -> {
-        val reverseMessage = AppendMessage(message.pairMessage, message.group)
-
-        if (messageList.contains(reverseMessage)) {
-          editMessageList.remove(reverseMessage)
-          return true
-        }
-      }
-      is ClearReplaceMessage -> {
-        val reverseMessage = messageList.firstOrNull { it is ReplaceMessage && it.group == message.group }
-
-        if (reverseMessage != null) {
-          editMessageList.remove(reverseMessage)
-          return true
-        }
-      }
-    }
-    return false
-  }
 
 }

@@ -18,7 +18,6 @@
 package com.ijoic.akka.websocket.state
 
 import com.ijoic.akka.websocket.message.MessageBox
-import com.ijoic.akka.websocket.message.SendMessage
 
 /**
  * Client state
@@ -30,11 +29,6 @@ internal interface ClientState {
    * Socket state
    */
   val state: SocketState
-
-  /**
-   * Message list
-   */
-  val messageList: List<SendMessage>
 
   /**
    * Messages
