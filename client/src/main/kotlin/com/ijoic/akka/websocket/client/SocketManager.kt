@@ -18,6 +18,7 @@
 package com.ijoic.akka.websocket.client
 
 import akka.actor.ActorRef
+import akka.actor.Cancellable
 import akka.actor.Props
 import akka.actor.Terminated
 import akka.persistence.AbstractPersistentActor
@@ -29,6 +30,7 @@ import com.ijoic.akka.websocket.state.ClientState
 import com.ijoic.akka.websocket.state.SocketState
 import com.ijoic.akka.websocket.state.impl.ClientStateImpl
 import com.ijoic.akka.websocket.state.impl.edit
+import java.time.Duration
 
 /**
  * WebSocket client manager
@@ -41,6 +43,8 @@ class SocketManager(
   client: SocketClient? = null): AbstractPersistentActor() {
 
   private val client: SocketClient = client ?: ClientFactory.loadClientInstance()
+
+  private var pingTask: Cancellable? = null
 
   /**
    * Socket listener
@@ -70,7 +74,7 @@ class SocketManager(
   }
 
   override fun persistenceId(): String {
-    return "${self.path()}::${config.uri}"
+    return "${self.path()}::${config.url}"
   }
 
   private fun dispatchSendMessage(status: ClientState, msg: SendMessage) {
@@ -86,7 +90,7 @@ class SocketManager(
         editStatus.waitForConnect = false
         editStatus.state = SocketState.CONNECTING
         context.become(waitingForReplies(editStatus))
-        client.connect(config.uri, socketListener)
+        client.connect(config.url, socketListener)
       }
       SocketState.CONNECTING -> {
         editStatus.waitForConnect = false
@@ -125,6 +129,7 @@ class SocketManager(
   }
 
   private fun onConnectionCompleted(status: ClientState) {
+    resetPingTask()
     val editStatus = status.edit()
 
     when(status.state) {
@@ -146,6 +151,16 @@ class SocketManager(
         status.messages.allMessages().forEach {
           client.send(it)
         }
+
+        if (!config.pingDuration.isZero && !config.pingMessage.isEmpty()) {
+          pingTask = context.system.scheduler
+            .schedule(
+              Duration.ZERO,
+              config.pingDuration,
+              { self.tell(PingMessage, self) },
+              context.system.dispatcher
+            )
+        }
       }
       SocketState.CONNECTED -> {
         // already connected
@@ -155,6 +170,7 @@ class SocketManager(
   }
 
   private fun onConnectionFailure(status: ClientState) {
+    resetPingTask()
     val editStatus = status.edit()
 
     when(status.state) {
@@ -163,7 +179,7 @@ class SocketManager(
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
           context.become(waitingForReplies(editStatus))
-          client.connect(config.uri, socketListener)
+          client.connect(config.url, socketListener)
         }
       }
       SocketState.CONNECTING,
@@ -177,7 +193,7 @@ class SocketManager(
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
           context.become(waitingForReplies(editStatus))
-          client.connect(config.uri, socketListener)
+          client.connect(config.url, socketListener)
         } else {
           editStatus.state = SocketState.DISCONNECTED
           context.become(waitingForReplies(editStatus))
@@ -187,6 +203,7 @@ class SocketManager(
   }
 
   private fun onConnectionClosed(status: ClientState) {
+    resetPingTask()
     val editStatus = status.edit()
 
     when(status.state) {
@@ -205,7 +222,7 @@ class SocketManager(
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
           context.become(waitingForReplies(editStatus))
-          client.connect(config.uri, socketListener)
+          client.connect(config.url, socketListener)
         } else {
           editStatus.state = SocketState.DISCONNECTED
           context.become(waitingForReplies(editStatus))
@@ -253,9 +270,31 @@ class SocketManager(
           is ConnectionClosed -> onConnectionClosed(status)
         }
       }
-      .match(Terminated::class.java) { client.disconnect() }
+      .match(PingMessage::class.java) {
+        if (status.state == SocketState.CONNECTED) {
+          client.send(config.pingMessage)
+        }
+      }
+      .match(Terminated::class.java) {
+        resetPingTask()
+        client.disconnect()
+      }
       .build()
   }
+
+  private fun resetPingTask() {
+    val oldTask = pingTask
+    pingTask = null
+
+    if (oldTask != null && !oldTask.isCancelled) {
+      oldTask.cancel()
+    }
+  }
+
+  /**
+   * Ping message
+   */
+  private object PingMessage
 
   /**
    * Resumed send message
