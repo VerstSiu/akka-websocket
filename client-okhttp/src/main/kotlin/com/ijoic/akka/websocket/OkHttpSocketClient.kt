@@ -69,11 +69,14 @@ class OkHttpSocketClient : SocketClient {
   }
 
   override fun disconnect() {
-    val oldSocket = socket
-    socket = null
-    listener = null
+    socket?.also {
+      socket = null
+      it.close(1000, "normal close")
+    }
+  }
 
-    oldSocket?.close(1000, "normal close")
+  override fun release() {
+    listener = null
   }
 
   override fun send(message: String) {
@@ -85,6 +88,13 @@ class OkHttpSocketClient : SocketClient {
    */
   private fun post(message: SocketMessage) {
     listener?.invoke(message)
+  }
+
+  /**
+   * Clear message listener
+   */
+  private fun clearMessageListener() {
+    listener = null
   }
 
 }

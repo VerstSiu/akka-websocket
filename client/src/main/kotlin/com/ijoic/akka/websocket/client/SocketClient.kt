@@ -35,6 +35,11 @@ interface SocketClient {
   fun disconnect()
 
   /**
+   * Release resources
+   */
+  fun release()
+
+  /**
    * Send [message]
    */
   fun send(message: String)

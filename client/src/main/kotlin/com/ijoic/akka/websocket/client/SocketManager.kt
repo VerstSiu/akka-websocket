@@ -61,12 +61,14 @@ class SocketManager(
 
     when(status.state) {
       SocketState.DISCONNECTED -> if (!editMessages.isEmpty) {
+        resetIdleDisconnectTask()
         editStatus.waitForConnect = false
         editStatus.state = SocketState.CONNECTING
         context.become(waitingForReplies(editStatus))
         client.connect(config.url, socketListener)
       }
       SocketState.CONNECTING -> {
+        resetIdleDisconnectTask()
         editStatus.waitForConnect = false
         context.become(waitingForReplies(editStatus))
       }
@@ -93,6 +95,12 @@ class SocketManager(
           is QueueMessage -> {
             client.send(msg.message)
           }
+        }
+
+        if (!editMessages.hasSubscribeMessages) {
+          prepareIdleDisconnectTask()
+        } else {
+          resetIdleDisconnectTask()
         }
       }
       SocketState.DISCONNECTING -> if (!editMessages.isEmpty) {
@@ -132,6 +140,12 @@ class SocketManager(
         // already connected
         // do nothing
       }
+    }
+
+    if (!editStatus.messages.hasSubscribeMessages) {
+      prepareIdleDisconnectTask()
+    } else {
+      resetIdleDisconnectTask()
     }
   }
 
@@ -216,9 +230,16 @@ class SocketManager(
           client.send(config.pingMessage)
         }
       }
+      .match(DisconnectMessage::class.java) {
+        if (status.state == SocketState.CONNECTED) {
+          resetPingTask()
+          client.disconnect()
+        }
+      }
       .match(Terminated::class.java) {
         resetPingTask()
         client.disconnect()
+        client.release()
       }
       .build()
   }
@@ -240,20 +261,41 @@ class SocketManager(
   }
 
   private fun resetPingTask() {
-    val oldTask = pingTask
-    pingTask = null
+    pingTask.checkAndCancel()
+  }
 
-    if (oldTask != null && !oldTask.isCancelled) {
-      oldTask.cancel()
+  /* -- ping task :end -- */
+
+  /* -- idle disconnect task :begin -- */
+
+  private var idleDisconnectTask: Cancellable? = null
+
+  private fun prepareIdleDisconnectTask() {
+    if (config.disconnectWhenIdle && idleDisconnectTask == null) {
+      idleDisconnectTask = context.system.scheduler
+        .scheduleOnce(
+          config.disconnectWhenIdleDelay,
+          { self.tell(DisconnectMessage, self) },
+          context.system.dispatcher
+        )
     }
   }
 
-  /* -- pint task :end -- */
+  private fun resetIdleDisconnectTask() {
+    idleDisconnectTask.checkAndCancel()
+  }
+
+  /* -- idle disconnect task :end -- */
 
   /**
    * Ping message
    */
   private object PingMessage
+
+  /**
+   * Disconnect message
+   */
+  private object DisconnectMessage
 
   companion object {
     /**
@@ -262,6 +304,15 @@ class SocketManager(
     @JvmStatic
     fun props(config: SocketConfig, requester: ActorRef, client: SocketClient? = null): Props {
       return Props.create(SocketManager::class.java, config, requester, client)
+    }
+
+    /**
+     * Check and cancel current cancellable
+     */
+    private fun Cancellable?.checkAndCancel() {
+      if (this != null && !this.isCancelled) {
+        this.cancel()
+      }
     }
   }
 }

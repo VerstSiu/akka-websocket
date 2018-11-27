@@ -43,4 +43,9 @@ internal interface MessageBox {
    */
   val isEmpty: Boolean
 
+  /**
+   * Returns true if subscribe messages not empty
+   */
+  val hasSubscribeMessages: Boolean
+
 }

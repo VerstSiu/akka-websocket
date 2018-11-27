@@ -12,7 +12,9 @@ fun main() {
   val config = SocketConfig(
     url = "wss://echo.websocket.org",
     pingMessage = "ping",
-    pingDuration = Duration.ofSeconds(5)
+    pingDuration = Duration.ofSeconds(5),
+    disconnectWhenIdle = true,
+    disconnectWhenIdleDelay = Duration.ofSeconds(20)
   )
 
   val receiver = system.actorOf(ReceiverActor.props())

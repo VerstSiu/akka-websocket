@@ -40,11 +40,19 @@ internal class MutableMessageBoxImpl(
     get() = _uniqueMessages ?: src.uniqueMessages
   override val queueMessages: List<String>
     get() = _queueMessages ?: src.queueMessages
+
   override val isEmpty: Boolean
     get() = if (editCount <= 0) {
       src.isEmpty
     } else {
       appendMessages.isEmpty() && uniqueMessages.isEmpty() && queueMessages.isEmpty()
+    }
+
+  override val hasSubscribeMessages: Boolean
+    get() = if (editCount <= 0) {
+      src.isEmpty
+    } else {
+      !appendMessages.isEmpty() || !uniqueMessages.isEmpty()
     }
 
   override fun append(message: String, group: String) {
