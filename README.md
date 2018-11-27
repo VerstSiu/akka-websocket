@@ -29,7 +29,7 @@ Akka web socket library project.
 
 ## Usage
 
-1. Create custom client actor:
+1. Create custom actor:
 
     ```kotlin
     class ClientActor(config: SocketConfig): AbstractActor() {
