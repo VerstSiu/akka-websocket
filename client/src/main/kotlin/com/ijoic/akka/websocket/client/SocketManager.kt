@@ -40,8 +40,6 @@ class SocketManager(
 
   private val client: SocketClient = client ?: ClientFactory.loadClientInstance()
 
-  private var pingTask: Cancellable? = null
-
   /**
    * Socket listener
    */
@@ -128,15 +126,7 @@ class SocketManager(
           client.send(it)
         }
 
-        if (!config.pingDuration.isZero && !config.pingMessage.isEmpty()) {
-          pingTask = context.system.scheduler
-            .schedule(
-              Duration.ZERO,
-              config.pingDuration,
-              { self.tell(PingMessage, self) },
-              context.system.dispatcher
-            )
-        }
+        preparePingTask()
       }
       SocketState.CONNECTED -> {
         // already connected
@@ -233,6 +223,22 @@ class SocketManager(
       .build()
   }
 
+  /* -- ping task :begin -- */
+
+  private var pingTask: Cancellable? = null
+
+  private fun preparePingTask() {
+    if (!config.pingDuration.isZero && !config.pingMessage.isEmpty()) {
+      pingTask = context.system.scheduler
+        .schedule(
+          Duration.ZERO,
+          config.pingDuration,
+          { self.tell(PingMessage, self) },
+          context.system.dispatcher
+        )
+    }
+  }
+
   private fun resetPingTask() {
     val oldTask = pingTask
     pingTask = null
@@ -241,6 +247,8 @@ class SocketManager(
       oldTask.cancel()
     }
   }
+
+  /* -- pint task :end -- */
 
   /**
    * Ping message
