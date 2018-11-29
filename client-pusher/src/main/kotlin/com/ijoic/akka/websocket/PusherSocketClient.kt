@@ -88,7 +88,6 @@ class PusherSocketClient : SocketClient, ConnectionEventListener, ChannelEventLi
   }
 
   override fun onConnectionStateChange(change: ConnectionStateChange?) {
-    println("connection state changed: from - ${change?.previousState}, to - ${change?.currentState}")
     change ?: return
     val currentState = change.currentState ?: return
 
@@ -107,18 +106,15 @@ class PusherSocketClient : SocketClient, ConnectionEventListener, ChannelEventLi
   }
 
   override fun onError(message: String?, code: String?, e: java.lang.Exception?) {
-    println("connection error: message - $message, code - $code, error - $e")
     post(ConnectionFailure(e ?: RuntimeException("connection error: message - $message, code - $code")))
   }
 
   override fun onEvent(channelName: String?, eventName: String?, data: String?) {
-    println("channel event: channel - $channelName, event - $eventName, data - $data")
     data ?: return
     post(ReceiveText(data))
   }
 
   override fun onSubscriptionSucceeded(channelName: String?) {
-    println("subscription succeed: channel - $channelName")
     // do nothing
   }
 
