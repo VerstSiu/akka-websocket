@@ -306,11 +306,12 @@ class SocketManager(
 
   companion object {
     /**
-     * Returns webSocket actor props instance with [config], [requester] and [client]
+     * Returns socket manager props instance with [options], [requester] and [client]
      */
     @JvmStatic
-    fun props(config: ClientOptions, requester: ActorRef, client: SocketClient? = null): Props {
-      return Props.create(SocketManager::class.java, config, requester, client)
+    @JvmOverloads
+    fun props(options: ClientOptions, requester: ActorRef, client: SocketClient? = null): Props {
+      return Props.create(SocketManager::class.java, options, requester, client)
     }
 
     /**
