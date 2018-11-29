@@ -24,6 +24,10 @@ Akka web socket library project.
     dependencies {
         implementation 'com.github.VerstSiu.akka-websocket:client:master'
         implementation 'com.github.VerstSiu.akka-websocket:client-okhttp:master'
+
+        // pusher
+        implementation 'com.pusher:pusher-java-client:1.8.2'
+        implementation 'com.github.VerstSiu.akka-websocket:client-pusher:master'
     }
     ```
 
@@ -70,6 +74,7 @@ Akka web socket library project.
 
 * [akka](https://akka.io/)
 * [okhttp](https://square.github.io/okhttp/)
+* [pusher](https://pusher.com/docs)
 
 ## License
 

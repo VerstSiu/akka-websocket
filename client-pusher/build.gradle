@@ -3,7 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '1.3.10'
 }
 
-version '1.0-SNAPSHOT'
+version 'unspecified'
 
 sourceCompatibility = 1.8
 
@@ -13,14 +13,10 @@ repositories {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    implementation 'com.typesafe.akka:akka-actor_2.12:2.5.18'
     implementation 'com.pusher:pusher-java-client:1.8.2'
     testImplementation group: 'junit', name: 'junit', version: '4.12'
 
     implementation project(":client")
-    implementation project(":client-okhttp")
-    implementation project(":client-pusher")
-    implementation project(":client-pusher-wrapper")
 }
 
 compileKotlin {

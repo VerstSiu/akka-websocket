@@ -2,6 +2,7 @@ package sample.ijoic.akka.websocket
 
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
+import com.ijoic.akka.websocket.OkHttpSocketClient
 import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.message.QueueMessage
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
@@ -18,14 +19,7 @@ fun main() {
   )
 
   val receiver = system.actorOf(ReceiverActor.props())
-  val manager = system.actorOf(SocketManager.props(options, receiver))
+  val manager = system.actorOf(SocketManager.props(options, receiver, OkHttpSocketClient()))
 
   manager.tell(QueueMessage("Hello world!"), ActorRef.noSender())
-
-  try {
-    println("Press ENTER to exit")
-    System.`in`.read()
-  } finally {
-    system.terminate()
-  }
 }

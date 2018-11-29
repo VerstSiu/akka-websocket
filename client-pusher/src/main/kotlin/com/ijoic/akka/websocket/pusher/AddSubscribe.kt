@@ -15,20 +15,17 @@
  *  limitations under the License.
  *
  */
-package com.ijoic.akka.websocket.options
+package com.ijoic.akka.websocket.pusher
 
-import com.ijoic.akka.websocket.client.ClientOptions
-import java.time.Duration
+import java.io.Serializable
 
 /**
- * Default socket options
+ * Add subscribe
  *
- * @author verstsiu created at 2018-11-29 11:57
+ * @author verstsiu created at 2018-11-29 15:47
  */
-data class DefaultSocketOptions(
-  val url: String,
-  val pingMessage: String = "",
-  val pingDuration: Duration = Duration.ZERO,
-  val disconnectWhenIdle: Boolean = false,
-  val disconnectWhenIdleDelay: Duration = Duration.ofSeconds(30)
-): ClientOptions
+data class AddSubscribe(val channel: String, val event: String): Serializable {
+  companion object {
+    private const val serialVersionUID: Long = 1
+  }
+}

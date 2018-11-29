@@ -17,18 +17,17 @@
  */
 package com.ijoic.akka.websocket.options
 
-import com.ijoic.akka.websocket.client.ClientOptions
-import java.time.Duration
-
 /**
- * Default socket options
+ * Toggle current config with [newUrl]
  *
- * @author verstsiu created at 2018-11-29 11:57
+ * @author verstsiu created at 2018-11-29 17:33
  */
-data class DefaultSocketOptions(
-  val url: String,
-  val pingMessage: String = "",
-  val pingDuration: Duration = Duration.ZERO,
-  val disconnectWhenIdle: Boolean = false,
-  val disconnectWhenIdleDelay: Duration = Duration.ofSeconds(30)
-): ClientOptions
+fun DefaultSocketOptions.toggleUrl(newUrl: String): DefaultSocketOptions {
+  return DefaultSocketOptions(
+    newUrl,
+    this.pingMessage,
+    this.pingDuration,
+    this.disconnectWhenIdle,
+    this.disconnectWhenIdleDelay
+  )
+}

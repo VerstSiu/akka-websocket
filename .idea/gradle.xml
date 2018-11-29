@@ -10,6 +10,8 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/client" />
             <option value="$PROJECT_DIR$/client-okhttp" />
+            <option value="$PROJECT_DIR$/client-pusher" />
+            <option value="$PROJECT_DIR$/client-pusher-wrapper" />
             <option value="$PROJECT_DIR$/sample" />
           </set>
         </option>

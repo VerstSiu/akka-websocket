@@ -35,6 +35,11 @@ object ConnectionCompleted: SocketMessage()
 data class ConnectionFailure(val cause: Throwable): SocketMessage()
 
 /**
+ * Connection closed
+ */
+data class ConnectionClosed(val cause: Throwable? = null): SocketMessage()
+
+/**
  * Receive text
  */
 data class ReceiveText(val message: String): SocketMessage()
@@ -58,8 +63,3 @@ data class ReceiveBytes(val bytes: ByteArray): SocketMessage() {
     return bytes.contentHashCode()
   }
 }
-
-/**
- * Connection closed
- */
-data class ConnectionClosed(val cause: Throwable): SocketMessage()
