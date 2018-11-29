@@ -20,7 +20,6 @@ dependencies {
     implementation project(":client")
     implementation project(":client-okhttp")
     implementation project(":client-pusher")
-    implementation project(":client-pusher-wrapper")
 }
 
 compileKotlin {
