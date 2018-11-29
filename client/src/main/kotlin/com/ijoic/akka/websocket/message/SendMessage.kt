@@ -29,7 +29,7 @@ sealed class SendMessage: Serializable
 /**
  * Append message
  */
-data class AppendMessage(val message: String, val group: String): SendMessage(), Serializable {
+data class AppendMessage(val message: Serializable, val group: String): SendMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -38,7 +38,7 @@ data class AppendMessage(val message: String, val group: String): SendMessage(),
 /**
  * Replace message
  */
-data class ReplaceMessage(val message: String, val group: String): SendMessage(), Serializable {
+data class ReplaceMessage(val message: Serializable, val group: String): SendMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -47,7 +47,7 @@ data class ReplaceMessage(val message: String, val group: String): SendMessage()
 /**
  * Clear append message
  */
-data class ClearAppendMessage(val message: String, val group: String, val pairMessage: String): SendMessage(), Serializable {
+data class ClearAppendMessage(val message: Serializable, val group: String, val pairMessage: Serializable): SendMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -56,7 +56,7 @@ data class ClearAppendMessage(val message: String, val group: String, val pairMe
 /**
  * Clear replace message
  */
-data class ClearReplaceMessage(val message: String, val group: String): SendMessage(), Serializable {
+data class ClearReplaceMessage(val message: Serializable, val group: String): SendMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -65,7 +65,7 @@ data class ClearReplaceMessage(val message: String, val group: String): SendMess
 /**
  * Queue message
  */
-data class QueueMessage(val message: String): SendMessage(), Serializable {
+data class QueueMessage(val message: Serializable): SendMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }

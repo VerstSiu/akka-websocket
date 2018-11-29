@@ -23,6 +23,7 @@ import okhttp3.*
 import okio.ByteString
 import java.lang.IllegalArgumentException
 import java.lang.RuntimeException
+import java.nio.ByteBuffer
 
 /**
  * OkHttp socket client
@@ -84,8 +85,17 @@ class OkHttpSocketClient : SocketClient {
     listener = null
   }
 
-  override fun send(message: String) {
-    socket?.send(message)
+  override fun send(message: Any) {
+    val socket = this.socket ?: return
+
+    when(message) {
+      is String -> socket.send(message)
+      is ByteArray -> socket.send(
+        ByteString.of(
+          ByteBuffer.wrap(message)
+        )
+      )
+    }
   }
 
   /**

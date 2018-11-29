@@ -17,6 +17,8 @@
  */
 package com.ijoic.akka.websocket.message
 
+import java.io.Serializable
+
 /**
  * Message box
  *
@@ -26,17 +28,17 @@ internal interface MessageBox {
   /**
    * Append messages (group - set items)
    */
-  val appendMessages: Map<String, Set<String>>
+  val appendMessages: Map<String, Set<Serializable>>
 
   /**
    * Unique messages (group - unique item)
    */
-  val uniqueMessages: Map<String, String>
+  val uniqueMessages: Map<String, Serializable>
 
   /**
    * Queue messages (items)
    */
-  val queueMessages: List<String>
+  val queueMessages: List<Serializable>
 
   /**
    * Box empty status

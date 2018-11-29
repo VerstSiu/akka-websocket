@@ -18,6 +18,7 @@
 package com.ijoic.akka.websocket.message.impl
 
 import com.ijoic.akka.websocket.message.MessageBox
+import java.io.Serializable
 
 /**
  * Message box impl
@@ -25,9 +26,9 @@ import com.ijoic.akka.websocket.message.MessageBox
  * @author verstsiu created at 2018-11-24 21:09
  */
 internal data class MessageBoxImpl(
-  override val appendMessages: Map<String, Set<String>> = emptyMap(),
-  override val uniqueMessages: Map<String, String> = emptyMap(),
-  override val queueMessages: List<String> = emptyList()
+  override val appendMessages: Map<String, Set<Serializable>> = emptyMap(),
+  override val uniqueMessages: Map<String, Serializable> = emptyMap(),
+  override val queueMessages: List<Serializable> = emptyList()
 ): MessageBox {
 
   override val isEmpty: Boolean by lazy {

@@ -19,6 +19,7 @@ package com.ijoic.akka.websocket.message.impl
 
 import com.ijoic.akka.websocket.message.MessageBox
 import com.ijoic.akka.websocket.message.MutableMessageBox
+import java.io.Serializable
 
 /**
  * Returns mutable instance of current message box
@@ -34,8 +35,8 @@ internal fun MessageBox.edit(): MutableMessageBox {
  *
  * @author verstsiu created at 2018-11-26 12:37
  */
-internal fun MessageBox.allMessages(): List<String> {
-  val messages = mutableListOf<String>()
+internal fun MessageBox.allMessages(): List<Serializable> {
+  val messages = mutableListOf<Serializable>()
 
   for ((_, messageSet) in appendMessages) {
     messages.addAll(messageSet)

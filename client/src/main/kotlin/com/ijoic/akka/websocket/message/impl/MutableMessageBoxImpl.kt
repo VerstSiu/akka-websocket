@@ -19,6 +19,7 @@ package com.ijoic.akka.websocket.message.impl
 
 import com.ijoic.akka.websocket.message.MessageBox
 import com.ijoic.akka.websocket.message.MutableMessageBox
+import java.io.Serializable
 
 /**
  * Mutable message box impl
@@ -28,17 +29,17 @@ import com.ijoic.akka.websocket.message.MutableMessageBox
 internal class MutableMessageBoxImpl(
   private val src: MessageBox = MessageBoxImpl.blank): MutableMessageBox {
 
-  private var _appendMessages: MutableMap<String, Set<String>>? = null
-  private var _uniqueMessages: MutableMap<String, String>? = null
-  private var _queueMessages: MutableList<String>? = null
+  private var _appendMessages: MutableMap<String, Set<Serializable>>? = null
+  private var _uniqueMessages: MutableMap<String, Serializable>? = null
+  private var _queueMessages: MutableList<Serializable>? = null
 
   private var editCount = 0
 
-  override val appendMessages: Map<String, Set<String>>
+  override val appendMessages: Map<String, Set<Serializable>>
     get() = _appendMessages ?: src.appendMessages
-  override val uniqueMessages: Map<String, String>
+  override val uniqueMessages: Map<String, Serializable>
     get() = _uniqueMessages ?: src.uniqueMessages
-  override val queueMessages: List<String>
+  override val queueMessages: List<Serializable>
     get() = _queueMessages ?: src.queueMessages
 
   override val isEmpty: Boolean
@@ -55,7 +56,7 @@ internal class MutableMessageBoxImpl(
       !appendMessages.isEmpty() || !uniqueMessages.isEmpty()
     }
 
-  override fun append(message: String, group: String) {
+  override fun append(message: Serializable, group: String) {
     val oldMessages = src.appendMessages[group]
 
     if (oldMessages == null || !oldMessages.contains(message)) {
@@ -75,7 +76,7 @@ internal class MutableMessageBoxImpl(
     }
   }
 
-  override fun replace(message: String, group: String) {
+  override fun replace(message: Serializable, group: String) {
     val oldMessages = src.uniqueMessages[group]
 
     if (oldMessages != message) {
@@ -87,7 +88,7 @@ internal class MutableMessageBoxImpl(
     }
   }
 
-  override fun clearAppend(message: String, group: String) {
+  override fun clearAppend(message: Serializable, group: String) {
     val oldMessages = src.appendMessages[group]
 
     if (oldMessages != null && oldMessages.contains(message)) {
@@ -124,7 +125,7 @@ internal class MutableMessageBoxImpl(
     }
   }
 
-  override fun queue(message: String) {
+  override fun queue(message: Serializable) {
     val editMessages = _queueMessages ?: src.queueMessages.toMutableList()
     editMessages.add(message)
     ++editCount

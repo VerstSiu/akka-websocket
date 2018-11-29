@@ -17,6 +17,8 @@
  */
 package com.ijoic.akka.websocket.message
 
+import java.io.Serializable
+
 /**
  * Mutable message box
  *
@@ -26,17 +28,17 @@ internal interface MutableMessageBox: MessageBox {
   /**
    * Append [message] within [group]
    */
-  fun append(message: String, group: String)
+  fun append(message: Serializable, group: String)
 
   /**
    * Replace [message] with [group]
    */
-  fun replace(message: String, group: String)
+  fun replace(message: Serializable, group: String)
 
   /**
    * Clear append [message] within [group]
    */
-  fun clearAppend(message: String, group: String)
+  fun clearAppend(message: Serializable, group: String)
 
   /**
    * Clear replace message within [group]
@@ -46,7 +48,7 @@ internal interface MutableMessageBox: MessageBox {
   /**
    * Queue [message] for which send once after socket connect completed
    */
-  fun queue(message: String)
+  fun queue(message: Serializable)
 
   /**
    * Clear queue message list

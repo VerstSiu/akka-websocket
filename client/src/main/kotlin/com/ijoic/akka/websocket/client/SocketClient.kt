@@ -42,6 +42,6 @@ interface SocketClient {
   /**
    * Send [message]
    */
-  fun send(message: String)
+  fun send(message: Any)
 
 }
