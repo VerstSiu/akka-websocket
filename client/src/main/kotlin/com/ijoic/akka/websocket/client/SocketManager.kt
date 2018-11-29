@@ -22,6 +22,7 @@ import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.message.impl.allMessages
 import com.ijoic.akka.websocket.message.impl.dispatchMessage
 import com.ijoic.akka.websocket.message.impl.edit
+import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import com.ijoic.akka.websocket.state.ClientState
 import com.ijoic.akka.websocket.state.SocketState
 import com.ijoic.akka.websocket.state.impl.ClientStateImpl
@@ -34,7 +35,7 @@ import java.time.Duration
  * @author verstsiu created at 2018-11-24 09:24
  */
 class SocketManager(
-  private val config: SocketConfig,
+  private val options: ClientOptions,
   private val requester: ActorRef,
   client: SocketClient? = null): AbstractActor() {
 
@@ -65,7 +66,7 @@ class SocketManager(
         editStatus.waitForConnect = false
         editStatus.state = SocketState.CONNECTING
         context.become(waitingForReplies(editStatus))
-        client.connect(config.url, socketListener)
+        client.connect(options, socketListener)
       }
       SocketState.CONNECTING -> {
         resetIdleDisconnectTask()
@@ -159,7 +160,7 @@ class SocketManager(
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
           context.become(waitingForReplies(editStatus))
-          client.connect(config.url, socketListener)
+          client.connect(options, socketListener)
         }
       }
       SocketState.CONNECTING,
@@ -173,7 +174,7 @@ class SocketManager(
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
           context.become(waitingForReplies(editStatus))
-          client.connect(config.url, socketListener)
+          client.connect(options, socketListener)
         } else {
           editStatus.state = SocketState.DISCONNECTED
           context.become(waitingForReplies(editStatus))
@@ -202,7 +203,7 @@ class SocketManager(
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
           context.become(waitingForReplies(editStatus))
-          client.connect(config.url, socketListener)
+          client.connect(options, socketListener)
         } else {
           editStatus.state = SocketState.DISCONNECTED
           context.become(waitingForReplies(editStatus))
@@ -226,8 +227,10 @@ class SocketManager(
         }
       }
       .match(PingMessage::class.java) {
-        if (status.state == SocketState.CONNECTED) {
-          client.send(config.pingMessage)
+        val options = this.options as? DefaultSocketOptions
+
+        if (options != null && status.state == SocketState.CONNECTED) {
+          client.send(options.pingMessage)
         }
       }
       .match(DisconnectMessage::class.java) {
@@ -249,11 +252,13 @@ class SocketManager(
   private var pingTask: Cancellable? = null
 
   private fun preparePingTask() {
-    if (!config.pingDuration.isZero && !config.pingMessage.isEmpty()) {
+    val options = this.options as? DefaultSocketOptions ?: return
+
+    if (!options.pingDuration.isZero && !options.pingMessage.isEmpty()) {
       pingTask = context.system.scheduler
         .schedule(
           Duration.ZERO,
-          config.pingDuration,
+          options.pingDuration,
           { self.tell(PingMessage, self) },
           context.system.dispatcher
         )
@@ -271,10 +276,12 @@ class SocketManager(
   private var idleDisconnectTask: Cancellable? = null
 
   private fun prepareIdleDisconnectTask() {
-    if (config.disconnectWhenIdle && idleDisconnectTask == null) {
+    val options = this.options as? DefaultSocketOptions ?: return
+
+    if (options.disconnectWhenIdle && idleDisconnectTask == null) {
       idleDisconnectTask = context.system.scheduler
         .scheduleOnce(
-          config.disconnectWhenIdleDelay,
+          options.disconnectWhenIdleDelay,
           { self.tell(DisconnectMessage, self) },
           context.system.dispatcher
         )
@@ -302,7 +309,7 @@ class SocketManager(
      * Returns webSocket actor props instance with [config], [requester] and [client]
      */
     @JvmStatic
-    fun props(config: SocketConfig, requester: ActorRef, client: SocketClient? = null): Props {
+    fun props(config: ClientOptions, requester: ActorRef, client: SocketClient? = null): Props {
       return Props.create(SocketManager::class.java, config, requester, client)
     }
 

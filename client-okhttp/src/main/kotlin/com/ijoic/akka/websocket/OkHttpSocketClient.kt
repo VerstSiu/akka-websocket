@@ -18,8 +18,10 @@
 package com.ijoic.akka.websocket
 
 import com.ijoic.akka.websocket.client.*
+import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import okhttp3.*
 import okio.ByteString
+import java.lang.IllegalArgumentException
 import java.lang.RuntimeException
 
 /**
@@ -31,12 +33,15 @@ class OkHttpSocketClient : SocketClient {
   private var socket: WebSocket? = null
   private var listener: ((SocketMessage) -> Unit)? = null
 
-  override fun connect(url: String, listener: (SocketMessage) -> Unit) {
+  override fun connect(options: ClientOptions, listener: (SocketMessage) -> Unit) {
+    if (options !is DefaultSocketOptions) {
+      throw IllegalArgumentException("invalid options: $options")
+    }
     this.listener = listener
 
     val client = OkHttpClient()
     val request = Request.Builder()
-      .url(url)
+      .url(options.url)
       .build()
 
     client.newWebSocket(request, object: WebSocketListener() {
@@ -88,13 +93,6 @@ class OkHttpSocketClient : SocketClient {
    */
   private fun post(message: SocketMessage) {
     listener?.invoke(message)
-  }
-
-  /**
-   * Clear message listener
-   */
-  private fun clearMessageListener() {
-    listener = null
   }
 
 }

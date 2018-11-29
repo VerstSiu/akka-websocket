@@ -25,9 +25,9 @@ package com.ijoic.akka.websocket.client
 interface SocketClient {
 
   /**
-   * Connect socket with [url] and [listener]
+   * Connect socket with [options] and [listener]
    */
-  fun connect(url: String, listener: (SocketMessage) -> Unit)
+  fun connect(options: ClientOptions, listener: (SocketMessage) -> Unit)
 
   /**
    * Disconnect socket

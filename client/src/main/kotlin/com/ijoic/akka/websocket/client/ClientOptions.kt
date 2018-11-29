@@ -17,17 +17,9 @@
  */
 package com.ijoic.akka.websocket.client
 
-import java.time.Duration
-
 /**
- * WebSocket config
+ * Client options
  *
  * @author verstsiu created at 2018-11-24 10:07
  */
-data class SocketConfig(
-  val url: String,
-  val pingMessage: String = "",
-  val pingDuration: Duration = Duration.ZERO,
-  val disconnectWhenIdle: Boolean = false,
-  val disconnectWhenIdleDelay: Duration = Duration.ofSeconds(30)
-)
+interface ClientOptions
