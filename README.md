@@ -32,8 +32,8 @@ Akka web socket library project.
 1. Create custom actor:
 
     ```kotlin
-    class ClientActor(config: SocketConfig): AbstractActor() {
-      private val socketManager = context.actorOf(SocketManager.props(config, self), "socket-manager")
+    class ClientActor(options: ClientOptions): AbstractActor() {
+      private val socketManager = context.actorOf(SocketManager.props(options, self), "socket-manager")
 
       override fun createReceive(): Receive {
         return receiveBuilder()
@@ -46,11 +46,11 @@ Akka web socket library project.
 
       companion object {
         /**
-         * Returns client actor props instance with [config]
+         * Returns client actor props instance with [options]
          */
         @JvmStatic
-        fun props(config: SocketConfig): Props {
-          return Props.create(ClientActor::class.java, config)
+        fun props(options: ClientOptions): Props {
+          return Props.create(ClientActor::class.java, options)
         }
       }
     }
@@ -60,9 +60,9 @@ Akka web socket library project.
 
     ```kotlin
     val system = ActorSystem.create()
-    val config = SocketConfig("wss://echo.websocket.org")
+    val options = DefaultSocketOptions("wss://echo.websocket.org")
 
-    val client = system.actorOf(ClientActor.props(config))
+    val client = system.actorOf(ClientActor.props(options))
     client.tell(QueueMessage("Hello world!"))
     ```
 
