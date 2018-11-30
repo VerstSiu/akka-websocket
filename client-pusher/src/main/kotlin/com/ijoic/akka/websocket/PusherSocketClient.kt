@@ -20,6 +20,7 @@ package com.ijoic.akka.websocket
 import com.ijoic.akka.websocket.client.*
 import com.ijoic.akka.websocket.options.WrapPusherOptions
 import com.ijoic.akka.websocket.pusher.AddSubscribe
+import com.ijoic.akka.websocket.pusher.PusherResponse
 import com.ijoic.akka.websocket.pusher.RemoveSubscribe
 import com.pusher.client.Pusher
 import com.pusher.client.channel.Channel
@@ -110,8 +111,10 @@ class PusherSocketClient : SocketClient, ConnectionEventListener, ChannelEventLi
   }
 
   override fun onEvent(channelName: String?, eventName: String?, data: String?) {
-    data ?: return
-    post(ReceiveText(data))
+    if (channelName == null || eventName == null || data == null) {
+      return
+    }
+    post(PusherResponse(channelName, eventName, data))
   }
 
   override fun onSubscriptionSucceeded(channelName: String?) {
