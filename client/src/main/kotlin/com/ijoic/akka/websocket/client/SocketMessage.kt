@@ -22,32 +22,32 @@ package com.ijoic.akka.websocket.client
  *
  * @author verstsiu created at 2018-11-26 11:17
  */
-sealed class SocketMessage
+interface SocketMessage
 
 /**
  * Connection completed
  */
-object ConnectionCompleted: SocketMessage()
+object ConnectionCompleted: SocketMessage
 
 /**
  * Connection failure
  */
-data class ConnectionFailure(val cause: Throwable): SocketMessage()
+data class ConnectionFailure(val cause: Throwable): SocketMessage
 
 /**
  * Connection closed
  */
-data class ConnectionClosed(val cause: Throwable? = null): SocketMessage()
+data class ConnectionClosed(val cause: Throwable? = null): SocketMessage
 
 /**
  * Receive text
  */
-data class ReceiveText(val message: String): SocketMessage()
+data class ReceiveText(val message: String): SocketMessage
 
 /**
  * Receive bytes
  */
-data class ReceiveBytes(val bytes: ByteArray): SocketMessage() {
+data class ReceiveBytes(val bytes: ByteArray): SocketMessage {
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (javaClass != other?.javaClass) return false
