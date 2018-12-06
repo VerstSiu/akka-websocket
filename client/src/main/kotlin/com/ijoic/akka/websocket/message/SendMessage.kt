@@ -17,6 +17,7 @@
  */
 package com.ijoic.akka.websocket.message
 
+import com.ijoic.metrics.BaseMetricsMessage
 import java.io.Serializable
 
 /**
@@ -24,7 +25,7 @@ import java.io.Serializable
  *
  * @author verstsiu created at 2018-11-24 22:11
  */
-sealed class SendMessage: Serializable
+sealed class SendMessage: BaseMetricsMessage(), Serializable
 
 /**
  * Append message

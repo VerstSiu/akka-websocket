@@ -95,7 +95,7 @@ class PusherSocketClient : SocketClient, ConnectionEventListener, ChannelEventLi
 
     if (change.previousState != currentState) {
       when(currentState) {
-        ConnectionState.CONNECTED -> post(ConnectionCompleted)
+        ConnectionState.CONNECTED -> post(ConnectionCompleted())
         ConnectionState.DISCONNECTED -> post(ConnectionClosed())
         ConnectionState.ALL,
         ConnectionState.CONNECTING,

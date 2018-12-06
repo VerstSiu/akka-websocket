@@ -24,4 +24,4 @@ import com.ijoic.akka.websocket.client.SocketMessage
  *
  * @author verstsu created at 2018-11-30 11:05
  */
-data class PusherResponse(val channel: String, val event: String, val data: String): SocketMessage
+data class PusherResponse(val channel: String, val event: String, val data: String): SocketMessage()

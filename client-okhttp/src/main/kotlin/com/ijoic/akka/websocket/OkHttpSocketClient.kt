@@ -48,7 +48,7 @@ class OkHttpSocketClient : SocketClient {
     client.newWebSocket(request, object: WebSocketListener() {
       override fun onOpen(webSocket: WebSocket, response: Response) {
         socket = webSocket
-        post(ConnectionCompleted)
+        post(ConnectionCompleted())
       }
 
       override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
