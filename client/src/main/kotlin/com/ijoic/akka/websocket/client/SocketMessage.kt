@@ -17,14 +17,14 @@
  */
 package com.ijoic.akka.websocket.client
 
-import com.ijoic.metrics.BaseMetricsMessage
+import com.ijoic.metrics.MetricsMessage
 
 /**
  * Socket message
  *
  * @author verstsiu created at 2018-11-26 11:17
  */
-abstract class SocketMessage: BaseMetricsMessage()
+abstract class SocketMessage: MetricsMessage()
 
 /**
  * Connection completed

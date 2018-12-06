@@ -27,8 +27,9 @@ import com.ijoic.akka.websocket.state.ClientState
 import com.ijoic.akka.websocket.state.SocketState
 import com.ijoic.akka.websocket.state.impl.ClientStateImpl
 import com.ijoic.akka.websocket.state.impl.edit
-import com.ijoic.metrics.BaseMetricsMessage
-import com.ijoic.metrics.traceDelay
+import com.ijoic.metrics.MetricsMessage
+import com.ijoic.metrics.statReceived
+import com.ijoic.metrics.statSend
 import java.time.Duration
 
 /**
@@ -47,7 +48,7 @@ class SocketManager(
    * Socket listener
    */
   private val socketListener = { message: SocketMessage ->
-    self.tell(message, self)
+    self.tell(message.statSend(), self)
   }
 
   override fun createReceive(): Receive {
@@ -217,12 +218,12 @@ class SocketManager(
   private fun waitingForReplies(status: ClientState): Receive {
     return receiveBuilder()
       .match(SendMessage::class.java) {
-        it.traceDelay()
+        it.statReceived()
         dispatchSendMessage(status, it)
       }
       .match(SocketMessage::class.java) {
-        it.traceDelay()
-        requester.tell(it, self)
+        it.statReceived()
+        requester.tell(it.statSend(), self)
 
         when(it) {
           is ConnectionCompleted -> onConnectionCompleted(status)
@@ -231,7 +232,7 @@ class SocketManager(
         }
       }
       .match(PingMessage::class.java) {
-        it.traceDelay()
+        it.statReceived()
         val options = this.options as? DefaultSocketOptions
 
         if (options != null && status.state == SocketState.CONNECTED) {
@@ -239,7 +240,7 @@ class SocketManager(
         }
       }
       .match(DisconnectMessage::class.java) {
-        it.traceDelay()
+        it.statReceived()
         if (status.state == SocketState.CONNECTED) {
           resetPingTask()
           client.disconnect()
@@ -303,12 +304,12 @@ class SocketManager(
   /**
    * Ping message
    */
-  private class PingMessage: BaseMetricsMessage()
+  private class PingMessage: MetricsMessage()
 
   /**
    * Disconnect message
    */
-  private class DisconnectMessage: BaseMetricsMessage()
+  private class DisconnectMessage: MetricsMessage()
 
   companion object {
     /**
