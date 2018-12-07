@@ -22,7 +22,7 @@ package com.ijoic.akka.websocket.state
  *
  * @author verstsiu created at 2018-11-24 20:27
  */
-internal enum class SocketState {
+enum class SocketState {
   /**
    * Connecting
    */

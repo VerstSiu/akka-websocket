@@ -86,7 +86,7 @@ class SocketManager(
   }
 
   override fun createReceive(): Receive {
-    return waitingForReplies(ClientStateImpl.blank)
+    return waitingForReplies(ClientStateImpl.blank, null)
   }
 
   private fun dispatchSendMessage(status: ClientState, msg: SendMessage) {
@@ -103,35 +103,35 @@ class SocketManager(
           resetIdleDisconnectTask()
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus))
+          context.become(waitingForReplies(editStatus, status))
           client.connect(options, socketListener)
         } else if (editMessages.isChanged) {
-          context.become(waitingForReplies(editStatus))
+          context.become(waitingForReplies(editStatus, status))
         }
       }
       SocketState.CONNECTING -> {
         resetIdleDisconnectTask()
         editStatus.waitForConnect = false
-        context.become(waitingForReplies(editStatus))
+        context.become(waitingForReplies(editStatus, status))
       }
       SocketState.CONNECTED -> {
         editStatus.waitForConnect = false
 
         when(msg) {
           is AppendMessage -> if (editMessages.isChanged) {
-            context.become(waitingForReplies(editStatus))
+            context.become(waitingForReplies(editStatus, status))
             client.send(msg.message)
           }
           is ReplaceMessage -> if (editMessages.isChanged) {
-            context.become(waitingForReplies(editStatus))
+            context.become(waitingForReplies(editStatus, status))
             client.send(msg.message)
           }
           is ClearAppendMessage -> if (editMessages.isChanged) {
-            context.become(waitingForReplies(editStatus))
+            context.become(waitingForReplies(editStatus, status))
             client.send(msg.message)
           }
           is ClearReplaceMessage -> if (editMessages.isChanged) {
-            context.become(waitingForReplies(editStatus))
+            context.become(waitingForReplies(editStatus, status))
             client.send(msg.message)
           }
           is QueueMessage -> {
@@ -149,10 +149,10 @@ class SocketManager(
         if (!editMessages.isEmpty) {
           editStatus.waitForConnect = true
         }
-        context.become(waitingForReplies(editStatus))
+        context.become(waitingForReplies(editStatus, status))
       }
       SocketState.RETRY_CONNECTING -> if(editMessages.isChanged) {
-        context.become(waitingForReplies(editStatus))
+        context.become(waitingForReplies(editStatus, status))
       }
     }
   }
@@ -177,7 +177,7 @@ class SocketManager(
           }
           .commit()
 
-        context.become(waitingForReplies(editStatus))
+        context.become(waitingForReplies(editStatus, status))
 
         status.messages.allMessages().forEach {
           client.send(it)
@@ -207,10 +207,10 @@ class SocketManager(
         if (status.waitForConnect) {
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus))
+          context.become(waitingForReplies(editStatus, status))
           client.connect(options, socketListener)
         } else {
-          prepareRetryConnect(editStatus)
+          prepareRetryConnect(editStatus, status)
         }
       }
       SocketState.CONNECTING,
@@ -218,23 +218,23 @@ class SocketManager(
         editStatus.waitForConnect = false
         editStatus.state = SocketState.DISCONNECTED
 
-        if (!prepareRetryConnect(editStatus)) {
-          context.become(waitingForReplies(editStatus))
+        if (!prepareRetryConnect(editStatus, status)) {
+          context.become(waitingForReplies(editStatus, status))
         }
       }
       SocketState.DISCONNECTING -> {
         if (status.waitForConnect) {
           editStatus.waitForConnect = false
           editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus))
+          context.become(waitingForReplies(editStatus, status))
           client.connect(options, socketListener)
         } else {
           editStatus.state = SocketState.DISCONNECTED
-          context.become(waitingForReplies(editStatus))
+          context.become(waitingForReplies(editStatus, status))
         }
       }
       SocketState.RETRY_CONNECTING -> {
-        prepareRetryConnect(editStatus)
+        prepareRetryConnect(editStatus, status)
       }
     }
   }
@@ -246,31 +246,35 @@ class SocketManager(
 
     when(status.state) {
       SocketState.DISCONNECTED -> {
-        prepareRetryConnect(editStatus)
+        prepareRetryConnect(editStatus, status)
       }
       SocketState.CONNECTING,
       SocketState.CONNECTED,
       SocketState.RETRY_CONNECTING -> {
         editStatus.state = SocketState.DISCONNECTED
 
-        if (!prepareRetryConnect(editStatus)) {
-          context.become(waitingForReplies(editStatus))
+        if (!prepareRetryConnect(editStatus, status)) {
+          context.become(waitingForReplies(editStatus, status))
         }
       }
       SocketState.DISCONNECTING -> {
         if (status.waitForConnect) {
           editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus))
+          context.become(waitingForReplies(editStatus, status))
           client.connect(options, socketListener)
         } else {
           editStatus.state = SocketState.DISCONNECTED
-          context.become(waitingForReplies(editStatus))
+          context.become(waitingForReplies(editStatus, status))
         }
       }
     }
   }
 
-  private fun waitingForReplies(status: ClientState): Receive {
+  private fun waitingForReplies(status: ClientState, oldStatus: ClientState?): Receive {
+    if (oldStatus != null && oldStatus.state != status.state) {
+      requester.tell(status.state, self)
+    }
+
     return receiveBuilder()
       .match(SendMessage::class.java) {
         it.statReceived()
@@ -306,7 +310,7 @@ class SocketManager(
           resetRetryConnectTask()
           val editStatus = status.edit()
           editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(status))
+          context.become(waitingForReplies(editStatus, status))
           client.connect(options, socketListener)
         }
       }
@@ -365,7 +369,7 @@ class SocketManager(
 
   private var retryTask: Cancellable? = null
 
-  private fun prepareRetryConnect(status: MutableClientState): Boolean {
+  private fun prepareRetryConnect(status: MutableClientState, oldStatus: ClientState): Boolean {
     if (!retryEnabled) {
       return false
     }
@@ -390,18 +394,18 @@ class SocketManager(
     if (editRetryPeriod > 0 && !retryRepeat) {
       status.retryCount = 0
       status.retryPeriod = 0
-      context.become(waitingForReplies(status))
+      context.become(waitingForReplies(status, oldStatus))
     } else if (retryInterval.isZero) {
       status.state = SocketState.CONNECTING
       status.retryCount = editRetryCount
       status.retryPeriod = editRetryPeriod
-      context.become(waitingForReplies(status))
+      context.become(waitingForReplies(status, oldStatus))
       client.connect(options, socketListener)
     } else {
       status.state = SocketState.RETRY_CONNECTING
       status.retryCount = editRetryCount
       status.retryPeriod = editRetryPeriod
-      context.become(waitingForReplies(status))
+      context.become(waitingForReplies(status, oldStatus))
 
       retryTask = context.system.scheduler
         .scheduleOnce(

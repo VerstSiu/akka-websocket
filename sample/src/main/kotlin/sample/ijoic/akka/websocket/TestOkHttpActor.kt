@@ -6,11 +6,10 @@ import com.ijoic.akka.websocket.OkHttpSocketClient
 import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.message.QueueMessage
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
-import com.ijoic.metrics.MetricsConfig
 import java.time.Duration
 
 fun main() {
-  MetricsConfig.traceEnabled = true
+//  MetricsConfig.traceEnabled = true
 
   val system = ActorSystem.create()
   val options = DefaultSocketOptions(
