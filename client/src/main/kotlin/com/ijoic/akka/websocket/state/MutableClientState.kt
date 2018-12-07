@@ -39,4 +39,14 @@ internal interface MutableClientState: ClientState {
    * Wait for connect status (read & write access)
    */
   override var waitForConnect: Boolean
+
+  /**
+   * Retry count
+   */
+  override var retryCount: Int
+
+  /**
+   * Retry period
+   */
+  override var retryPeriod: Int
 }

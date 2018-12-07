@@ -17,26 +17,24 @@
  */
 package com.ijoic.akka.websocket.options
 
-import com.ijoic.akka.websocket.client.ClientOptions
-import java.time.Duration
-
 /**
- * Default socket options
+ * Retry type
  *
- * @author verstsiu created at 2018-11-29 11:57
+ * @author verstsiu created at 2018-12-07 09:42
  */
-data class DefaultSocketOptions(
-  val url: String,
-  val pingMessage: String = "",
-  val pingDuration: Duration = Duration.ZERO,
-  val disconnectWhenIdle: Boolean = false,
-  val disconnectWhenIdleDelay: Duration = Duration.ofSeconds(30),
-  val retryType: RetryType = RetryType.PERIOD_REPEAT,
-  val retryIntervals: List<Duration> = listOf(
-    Duration.ZERO,
-    Duration.ofSeconds(2),
-    Duration.ofSeconds(4),
-    Duration.ofSeconds(8),
-    Duration.ofSeconds(16)
-  )
-): ClientOptions
+enum class RetryType(val retryEnabled: Boolean, val peroidRepeat: Boolean) {
+  /**
+   * None.
+   */
+  NONE(false, false),
+
+  /**
+   * Repeat with retry intervals
+   */
+  PERIOD_REPEAT(true, true),
+
+  /**
+   * Repeat with retry intervals (once)
+   */
+  PERIOD_ONCE(true, false)
+}

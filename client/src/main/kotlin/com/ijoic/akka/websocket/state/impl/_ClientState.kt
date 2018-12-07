@@ -28,3 +28,15 @@ import com.ijoic.akka.websocket.state.MutableClientState
 internal fun ClientState.edit(): MutableClientState {
   return MutableClientStateImpl(this)
 }
+
+/**
+ * Returns mutable instance of current message box
+ *
+ * @author verstsiu created at 2018-11-26 17:45
+ */
+internal fun ClientState.clearRetryStatus(): MutableClientState {
+  return MutableClientStateImpl(this).apply {
+    retryCount = 0
+    retryPeriod = 0
+  }
+}

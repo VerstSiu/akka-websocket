@@ -39,4 +39,14 @@ internal interface ClientState {
    * Wait for connect status
    */
   val waitForConnect: Boolean
+
+  /**
+   * Retry count
+   */
+  val retryCount: Int
+
+  /**
+   * Retry period
+   */
+  val retryPeriod: Int
 }

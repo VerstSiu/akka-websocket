@@ -31,5 +31,7 @@ internal class MutableClientStateImpl(
   override var state = src.state
   override var messages = src.messages
   override var waitForConnect = src.waitForConnect
+  override var retryCount: Int = src.retryCount
+  override var retryPeriod: Int = src.retryPeriod
 
 }

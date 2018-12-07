@@ -30,7 +30,9 @@ import com.ijoic.akka.websocket.state.SocketState
 internal class ClientStateImpl(
   override val state: SocketState = SocketState.DISCONNECTED,
   override val messages: MessageBox = MessageBoxImpl.blank,
-  override val waitForConnect: Boolean = false
+  override val waitForConnect: Boolean = false,
+  override val retryCount: Int = 0,
+  override val retryPeriod: Int = 0
 ): ClientState {
 
   companion object {

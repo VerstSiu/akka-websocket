@@ -41,5 +41,10 @@ internal enum class SocketState {
   /**
    * Disconnected
    */
-  DISCONNECTED
+  DISCONNECTED,
+
+  /**
+   * Retry connecting
+   */
+  RETRY_CONNECTING
 }
