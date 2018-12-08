@@ -28,6 +28,7 @@ import com.ijoic.akka.websocket.state.MutableClientState
 internal class MutableClientStateImpl(
   src: ClientState = ClientStateImpl.blank): MutableClientState {
 
+  override var isConnectionActive = src.isConnectionActive
   override var state = src.state
   override var messages = src.messages
   override var waitForConnect = src.waitForConnect

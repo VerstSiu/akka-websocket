@@ -28,6 +28,7 @@ import com.ijoic.akka.websocket.state.SocketState
  * @author verstsiu created at 2018-11-26 17:41
  */
 internal class ClientStateImpl(
+  override val isConnectionActive: Boolean = true,
   override val state: SocketState = SocketState.DISCONNECTED,
   override val messages: MessageBox = MessageBoxImpl.blank,
   override val waitForConnect: Boolean = false,

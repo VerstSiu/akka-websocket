@@ -25,6 +25,12 @@ import com.ijoic.akka.websocket.message.MessageBox
  * @author verstsiu created at 2018-11-26 17:37
  */
 internal interface ClientState {
+
+  /**
+   * Connection active status
+   */
+  val isConnectionActive: Boolean
+
   /**
    * Socket state
    */

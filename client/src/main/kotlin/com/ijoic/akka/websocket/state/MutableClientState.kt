@@ -26,6 +26,11 @@ import com.ijoic.akka.websocket.message.MessageBox
  */
 internal interface MutableClientState: ClientState {
   /**
+   * Connection active status
+   */
+  override var isConnectionActive: Boolean
+
+  /**
    * Socket state (read & write access)
    */
   override var state: SocketState
