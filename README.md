@@ -67,7 +67,7 @@ Akka web socket library project.
     val options = DefaultSocketOptions("wss://echo.websocket.org")
 
     val client = system.actorOf(ClientActor.props(options))
-    client.tell(QueueMessage("Hello world!"))
+    client.tell(QueueMessage("Hello world!"), ActorRef.noSender())
     ```
 
 ## Reference
