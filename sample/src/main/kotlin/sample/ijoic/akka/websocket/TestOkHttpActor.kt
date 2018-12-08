@@ -4,6 +4,7 @@ import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.ijoic.akka.websocket.OkHttpSocketClient
 import com.ijoic.akka.websocket.client.SocketManager
+import com.ijoic.akka.websocket.message.BatchSendMessage
 import com.ijoic.akka.websocket.message.QueueMessage
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import java.time.Duration
@@ -23,5 +24,13 @@ fun main() {
   val receiver = system.actorOf(ReceiverActor.props())
   val manager = system.actorOf(SocketManager.props(options, receiver, OkHttpSocketClient()))
 
-  manager.tell(QueueMessage("Hello world!"), ActorRef.noSender())
+  manager.tell(
+    BatchSendMessage(
+      items = listOf(
+        QueueMessage("Hello world!"),
+        QueueMessage("I'm here!")
+      )
+    ),
+    ActorRef.noSender()
+  )
 }

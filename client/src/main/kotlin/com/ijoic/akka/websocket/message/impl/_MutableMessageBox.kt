@@ -24,13 +24,28 @@ import com.ijoic.akka.websocket.message.*
  *
  * @author verstsiu created at 2018-11-24 22:18
  */
-internal fun MutableMessageBox.dispatchMessage(msg: SendMessage): MutableMessageBox {
-  when(msg) {
+internal fun MutableMessageBox.dispatchMessage(msg: SendMessage): Boolean {
+  return when(msg) {
     is AppendMessage -> append(msg.message, msg.group)
     is ReplaceMessage -> replace(msg.message, msg.group)
     is ClearAppendMessage -> clearAppend(msg.pairMessage, msg.group)
     is ClearReplaceMessage -> clearReplace(msg.group)
     is QueueMessage -> queue(msg.message)
   }
-  return this
+}
+
+/**
+ * Dispatch send message all
+ *
+ * @author verstsiu created at 2018-12-08 16:40
+ */
+internal fun MutableMessageBox.dispatchMessageAll(msgItems: Collection<SendMessage>): List<SendMessage> {
+  val dispatchedItems = mutableListOf<SendMessage>()
+
+  msgItems.forEach {
+    if (dispatchMessage(it)) {
+      dispatchedItems.add(it)
+    }
+  }
+  return dispatchedItems
 }

@@ -21,6 +21,7 @@ import akka.actor.*
 import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.message.impl.allMessages
 import com.ijoic.akka.websocket.message.impl.dispatchMessage
+import com.ijoic.akka.websocket.message.impl.dispatchMessageAll
 import com.ijoic.akka.websocket.message.impl.edit
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import com.ijoic.akka.websocket.state.ClientState
@@ -89,11 +90,81 @@ class SocketManager(
     return waitingForReplies(ClientStateImpl.blank, null)
   }
 
+  private fun dispatchBatchSendMessage(status: ClientState, msg: BatchSendMessage) {
+    val editStatus = status.edit()
+    val editMessages = status.messages.edit()
+
+    val editMsgItems = editMessages.dispatchMessageAll(msg.items)
+
+    dispatchSendMessage(editStatus, status, editMessages) {
+      var subscribeChanged = false
+
+      editMsgItems.forEach {
+        when (it) {
+          is AppendMessage -> if (editMessages.isChanged) {
+            subscribeChanged = true
+            client.send(it.message)
+          }
+          is ReplaceMessage -> if (editMessages.isChanged) {
+            subscribeChanged = true
+            client.send(it.message)
+          }
+          is ClearAppendMessage -> if (editMessages.isChanged) {
+            subscribeChanged = true
+            client.send(it.message)
+          }
+          is ClearReplaceMessage -> if (editMessages.isChanged) {
+            subscribeChanged = true
+            client.send(it.message)
+          }
+          is QueueMessage -> {
+            client.send(it.message)
+          }
+        }
+      }
+
+      if (subscribeChanged) {
+        context.become(waitingForReplies(editStatus, status))
+      }
+    }
+  }
+
   private fun dispatchSendMessage(status: ClientState, msg: SendMessage) {
     val editStatus = status.edit()
     val editMessages = status.messages
       .edit()
-      .dispatchMessage(msg)
+      .apply { dispatchMessage(msg) }
+
+    dispatchSendMessage(editStatus, status, editMessages) {
+      when (msg) {
+        is AppendMessage -> if (editMessages.isChanged) {
+          context.become(waitingForReplies(editStatus, status))
+          client.send(msg.message)
+        }
+        is ReplaceMessage -> if (editMessages.isChanged) {
+          context.become(waitingForReplies(editStatus, status))
+          client.send(msg.message)
+        }
+        is ClearAppendMessage -> if (editMessages.isChanged) {
+          context.become(waitingForReplies(editStatus, status))
+          client.send(msg.message)
+        }
+        is ClearReplaceMessage -> if (editMessages.isChanged) {
+          context.become(waitingForReplies(editStatus, status))
+          client.send(msg.message)
+        }
+        is QueueMessage -> {
+          client.send(msg.message)
+        }
+      }
+    }
+  }
+
+  private fun dispatchSendMessage(
+    editStatus: MutableClientState,
+    status: ClientState,
+    editMessages: MutableMessageBox,
+    onSendMessages: () -> Unit) {
 
     editStatus.messages = editMessages.commit()
 
@@ -124,27 +195,7 @@ class SocketManager(
           context.become(waitingForReplies(editStatus, status))
           client.disconnect()
         } else {
-          when (msg) {
-            is AppendMessage -> if (editMessages.isChanged) {
-              context.become(waitingForReplies(editStatus, status))
-              client.send(msg.message)
-            }
-            is ReplaceMessage -> if (editMessages.isChanged) {
-              context.become(waitingForReplies(editStatus, status))
-              client.send(msg.message)
-            }
-            is ClearAppendMessage -> if (editMessages.isChanged) {
-              context.become(waitingForReplies(editStatus, status))
-              client.send(msg.message)
-            }
-            is ClearReplaceMessage -> if (editMessages.isChanged) {
-              context.become(waitingForReplies(editStatus, status))
-              client.send(msg.message)
-            }
-            is QueueMessage -> {
-              client.send(msg.message)
-            }
-          }
+          onSendMessages()
 
           if (!editMessages.hasSubscribeMessages) {
             prepareIdleDisconnectTask()
@@ -375,6 +426,10 @@ class SocketManager(
     }
 
     return receiveBuilder()
+      .match(BatchSendMessage::class.java) {
+        it.statReceived()
+        dispatchBatchSendMessage(status, it)
+      }
       .match(SendMessage::class.java) {
         it.statReceived()
         dispatchSendMessage(status, it)

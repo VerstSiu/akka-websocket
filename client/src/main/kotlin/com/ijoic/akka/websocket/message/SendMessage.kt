@@ -71,3 +71,8 @@ data class QueueMessage(val message: Serializable): SendMessage(), Serializable 
     private const val serialVersionUID: Long = 1
   }
 }
+
+/**
+ * Batch send message
+ */
+data class BatchSendMessage(val items: List<SendMessage>): MetricsMessage()

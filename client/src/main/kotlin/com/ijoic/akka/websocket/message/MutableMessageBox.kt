@@ -28,27 +28,27 @@ internal interface MutableMessageBox: MessageBox {
   /**
    * Append [message] within [group]
    */
-  fun append(message: Serializable, group: String)
+  fun append(message: Serializable, group: String): Boolean
 
   /**
    * Replace [message] with [group]
    */
-  fun replace(message: Serializable, group: String)
+  fun replace(message: Serializable, group: String): Boolean
 
   /**
    * Clear append [message] within [group]
    */
-  fun clearAppend(message: Serializable, group: String)
+  fun clearAppend(message: Serializable, group: String): Boolean
 
   /**
    * Clear replace message within [group]
    */
-  fun clearReplace(group: String)
+  fun clearReplace(group: String): Boolean
 
   /**
    * Queue [message] for which send once after socket connect completed
    */
-  fun queue(message: Serializable)
+  fun queue(message: Serializable): Boolean
 
   /**
    * Clear queue message list
