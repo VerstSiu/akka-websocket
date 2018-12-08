@@ -49,3 +49,14 @@ internal fun MessageBox.allMessages(): List<Serializable> {
   messages.addAll(queueMessages)
   return messages
 }
+
+/**
+ * Returns measured subscribe message size
+ */
+internal fun MessageBox.measureSubscribeMessageSize(): Int {
+  val appendMessageSize = appendMessages
+    .map { (_, value) -> value.size }
+    .sum()
+
+  return appendMessageSize + uniqueMessages.size
+}

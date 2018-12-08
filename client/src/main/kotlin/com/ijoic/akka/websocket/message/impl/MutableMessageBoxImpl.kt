@@ -49,11 +49,11 @@ internal class MutableMessageBoxImpl(
       appendMessages.isEmpty() && uniqueMessages.isEmpty() && queueMessages.isEmpty()
     }
 
-  override val hasSubscribeMessages: Boolean
+  override val subscribeMessageSize: Int
     get() = if (editCount <= 0) {
-      src.isEmpty
+      src.subscribeMessageSize
     } else {
-      !appendMessages.isEmpty() || !uniqueMessages.isEmpty()
+      measureSubscribeMessageSize()
     }
 
   override fun append(message: Serializable, group: String): Boolean {

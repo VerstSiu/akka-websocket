@@ -35,9 +35,7 @@ internal data class MessageBoxImpl(
     appendMessages.isEmpty() && uniqueMessages.isEmpty() && queueMessages.isEmpty()
   }
 
-  override val hasSubscribeMessages: Boolean by lazy {
-    !appendMessages.isEmpty() || !uniqueMessages.isEmpty()
-  }
+  override val subscribeMessageSize: Int by lazy { measureSubscribeMessageSize() }
 
   companion object {
     /**

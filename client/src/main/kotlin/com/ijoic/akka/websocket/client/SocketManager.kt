@@ -197,7 +197,7 @@ class SocketManager(
         } else {
           onSendMessages()
 
-          if (!editMessages.hasSubscribeMessages) {
+          if (editMessages.subscribeMessageSize <= 0) {
             prepareIdleDisconnectTask()
           } else {
             resetIdleDisconnectTask()
@@ -269,7 +269,7 @@ class SocketManager(
       }
     }
 
-    if (status.isConnectionActive && !editStatus.messages.hasSubscribeMessages) {
+    if (status.isConnectionActive && editStatus.messages.subscribeMessageSize <= 0) {
       prepareIdleDisconnectTask()
     } else {
       resetIdleDisconnectTask()

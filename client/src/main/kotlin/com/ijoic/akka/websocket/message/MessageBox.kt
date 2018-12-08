@@ -46,8 +46,8 @@ internal interface MessageBox {
   val isEmpty: Boolean
 
   /**
-   * Returns true if subscribe messages not empty
+   * Subscribe message size
    */
-  val hasSubscribeMessages: Boolean
+  val subscribeMessageSize: Int
 
 }
