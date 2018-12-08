@@ -552,12 +552,12 @@ class SocketManager(
   /**
    * Request connect
    */
-  private class RequestConnect: MetricsMessage()
+  class RequestConnect: MetricsMessage()
 
   /**
    * Request disconnect
    */
-  private class RequestDisconnect: MetricsMessage()
+  class RequestDisconnect: MetricsMessage()
 
   companion object {
     /**
