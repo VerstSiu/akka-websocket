@@ -17,8 +17,7 @@
  */
 package com.ijoic.akka.websocket.message.impl
 
-import com.ijoic.akka.websocket.message.MessageBox
-import com.ijoic.akka.websocket.message.MutableMessageBox
+import com.ijoic.akka.websocket.message.*
 import java.io.Serializable
 
 /**
@@ -60,3 +59,43 @@ internal fun MessageBox.measureSubscribeMessageSize(): Int {
 
   return appendMessageSize + uniqueMessages.size
 }
+
+/* -- contains message :begin -- */
+
+/**
+ * Returns [msg] contains status
+ */
+internal fun MessageBox.containsMessage(msg: AppendMessage): Boolean {
+  val items = appendMessages[msg.group]
+
+  return items != null && items.contains(msg.message)
+}
+
+/**
+ * Returns [msg] contains status
+ */
+internal fun MessageBox.containsMessage(msg: ReplaceMessage): Boolean {
+  val item = uniqueMessages[msg.group]
+
+  return item != null && item == msg.message
+}
+
+/**
+ * Returns reverse [msg] contains status
+ */
+internal fun MessageBox.containsReverseMessage(msg: ClearAppendMessage): Boolean {
+  val items = appendMessages[msg.group]
+
+  return items != null && items.contains(msg.pairMessage)
+}
+
+/**
+ * Returns reverse [msg] contains status
+ */
+internal fun MessageBox.containsReverseMessage(msg: ClearReplaceMessage): Boolean {
+  val items = appendMessages[msg.group]
+
+  return items != null
+}
+
+/* -- contains message :end -- */
