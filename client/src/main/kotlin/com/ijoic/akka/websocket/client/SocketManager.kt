@@ -19,10 +19,7 @@ package com.ijoic.akka.websocket.client
 
 import akka.actor.*
 import com.ijoic.akka.websocket.message.*
-import com.ijoic.akka.websocket.message.impl.allMessages
-import com.ijoic.akka.websocket.message.impl.dispatchMessage
-import com.ijoic.akka.websocket.message.impl.dispatchMessageAll
-import com.ijoic.akka.websocket.message.impl.edit
+import com.ijoic.akka.websocket.message.impl.*
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import com.ijoic.akka.websocket.state.ClientState
 import com.ijoic.akka.websocket.state.MutableClientState
@@ -420,6 +417,24 @@ class SocketManager(
     }
   }
 
+  private fun onRequestClearSubscribe(status: ClientState) {
+    val editStatus = status.clearRetryStatus()
+
+    when(status.state) {
+      SocketState.CONNECTED -> {
+        editStatus.waitForConnect = status.isConnectionActive
+        editStatus.state = SocketState.DISCONNECTING
+        editStatus.messages = MessageBoxImpl.blank
+        context.become(waitingForReplies(editStatus, status))
+        client.disconnect()
+      }
+      else -> {
+        editStatus.messages = MessageBoxImpl.blank
+        context.become(waitingForReplies(editStatus, status))
+      }
+    }
+  }
+
   private fun waitingForReplies(status: ClientState, oldStatus: ClientState?): Receive {
     if (oldStatus != null && oldStatus.state != status.state) {
       requester.tell(status.state, self)
@@ -451,6 +466,10 @@ class SocketManager(
       .match(RequestDisconnect::class.java) {
         it.statReceived()
         onRequestDisconnect(status)
+      }
+      .match(RequestClearSubscribe::class.java) {
+        it.statReceived()
+        onRequestClearSubscribe(status)
       }
       .match(PingMessage::class.java) {
         it.statReceived()
@@ -613,6 +632,11 @@ class SocketManager(
    * Request disconnect
    */
   class RequestDisconnect: MetricsMessage()
+
+  /**
+   * Request clear subscribe
+   */
+  class RequestClearSubscribe: MetricsMessage()
 
   companion object {
     /**
