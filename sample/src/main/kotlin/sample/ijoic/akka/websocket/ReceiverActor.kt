@@ -12,7 +12,7 @@ class ReceiverActor: AbstractLoggingActor() {
         log().info("state changed: $it")
       }
       .match(SocketMessage::class.java) {
-        log().info(it.toString())
+        println("from - ${sender.path()}, msg - $it")
       }
       .build()
   }

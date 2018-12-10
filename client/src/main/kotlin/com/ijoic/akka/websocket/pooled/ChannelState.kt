@@ -15,36 +15,24 @@
  *  limitations under the License.
  *
  */
-package com.ijoic.akka.websocket.state
+package com.ijoic.akka.websocket.pooled
+
+import akka.actor.ActorRef
+import com.ijoic.akka.websocket.state.SocketState
 
 /**
- * Socket state
+ * Channel state
  *
- * @author verstsiu created at 2018-11-24 20:27
+ * @author verstsiu created at 2018-12-10 14:49
  */
-enum class SocketState(internal val priority: Int) {
+internal class ChannelState(val ref: ActorRef) {
   /**
-   * Connecting
+   * Socket state
    */
-  CONNECTING(3),
+  var state: SocketState = SocketState.DISCONNECTED
 
   /**
-   * Connected
+   * Messages
    */
-  CONNECTED(4),
-
-  /**
-   * Disconnecting
-   */
-  DISCONNECTING(2),
-
-  /**
-   * Disconnected
-   */
-  DISCONNECTED(0),
-
-  /**
-   * Retry connecting
-   */
-  RETRY_CONNECTING(1)
+  val messages = PooledMessageBox()
 }

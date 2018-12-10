@@ -15,36 +15,26 @@
  *  limitations under the License.
  *
  */
-package com.ijoic.akka.websocket.state
+package com.ijoic.akka.websocket.pooled
 
 /**
- * Socket state
+ * Pooled config
  *
- * @author verstsiu created at 2018-11-24 20:27
+ * @author verstsiu created at 2018-12-08 12:02
  */
-enum class SocketState(internal val priority: Int) {
-  /**
-   * Connecting
-   */
-  CONNECTING(3),
+data class PooledConfig(
+  val initConnectionSize: Int = DEFAULT_INIT_CONNECTION_SIZE) {
 
   /**
-   * Connected
+   * Returns valid pooled config instance
    */
-  CONNECTED(4),
+  internal fun checkValid(): PooledConfig {
+    return PooledConfig(
+      initConnectionSize = this.initConnectionSize.takeIf { it >= 1 } ?: DEFAULT_INIT_CONNECTION_SIZE
+    )
+  }
 
-  /**
-   * Disconnecting
-   */
-  DISCONNECTING(2),
-
-  /**
-   * Disconnected
-   */
-  DISCONNECTED(0),
-
-  /**
-   * Retry connecting
-   */
-  RETRY_CONNECTING(1)
+  companion object {
+    private const val DEFAULT_INIT_CONNECTION_SIZE = 2
+  }
 }
