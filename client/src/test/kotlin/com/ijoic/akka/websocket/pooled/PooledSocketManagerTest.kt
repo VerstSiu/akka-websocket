@@ -53,8 +53,7 @@ class PooledSocketManagerTest {
     m1.expectMsgClass(SocketManager.RequestConnect::class.java)
 
     // m0 connect ready
-    manager.tell(SocketState.CONNECTING, m0.ref)
-    manager.tell(SocketState.CONNECTED, m0.ref)
+    manager.notifyConnected(m0)
 
     // deploy subscribe message
     m0.expectMsgClass(QueueMessage::class.java).also {
@@ -76,18 +75,12 @@ class PooledSocketManagerTest {
       initSubscribe = 1
     ))
 
+    val messages = mutableListOf("h1", "h2", "h3")
+
     manager.tell(
-      BatchSendMessage(
-        items = listOf(
-          AppendMessage(SubscribeInfo("h1", "test", "")),
-          AppendMessage(SubscribeInfo("h2", "test", "")),
-          AppendMessage(SubscribeInfo("h3", "test", ""))
-        )
-      ),
+      messages.toBatchMessage(),
       ActorRef.noSender()
     )
-
-    val consumedMessages = mutableListOf("h1", "h2", "h3")
 
     // prepare connect
     m0.expectMsgClass(SocketManager.RequestConnect::class.java)
@@ -95,34 +88,64 @@ class PooledSocketManagerTest {
     m2.expectMsgClass(SocketManager.RequestConnect::class.java)
 
     // m0 connect ready
-    manager.tell(SocketState.CONNECTING, m0.ref)
-    manager.tell(SocketState.CONNECTED, m0.ref)
-
-    // deploy subscribe message
-    m0.expectMsgClass(AppendMessage::class.java).also {
-      assert(consumedMessages.contains(it.info.subscribe))
-      consumedMessages.remove(it.info.subscribe)
-    }
+    manager.notifyConnected(m0)
+    m0.consumeAppendMessage(messages)
 
     // m1 connect ready
-    manager.tell(SocketState.CONNECTING, m1.ref)
-    manager.tell(SocketState.CONNECTED, m1.ref)
-
-    // deploy subscribe message
-    m1.expectMsgClass(AppendMessage::class.java).also {
-      assert(consumedMessages.contains(it.info.subscribe))
-      consumedMessages.remove(it.info.subscribe)
-    }
+    manager.notifyConnected(m1)
+    m1.consumeAppendMessage(messages)
 
     // m2 connect ready
-    manager.tell(SocketState.CONNECTING, m2.ref)
-    manager.tell(SocketState.CONNECTED, m2.ref)
+    manager.notifyConnected(m2)
+    m2.consumeAppendMessage(messages)
+  }
 
-    // deploy subscribe message
-    m2.expectMsgClass(AppendMessage::class.java).also {
-      assert(consumedMessages.contains(it.info.subscribe))
-      consumedMessages.remove(it.info.subscribe)
-    }
+  @Test
+  fun testConnectionAbortSimple() {
+    val receiver = TestKit(system)
+
+    val m0 = TestKit(system)
+    val m1 = TestKit(system)
+    val m2 = TestKit(system)
+
+    val manager = managerOf(receiver, listOf(m0, m1, m2), PooledConfig(
+      initConnectionSize = 2,
+      idleConnectionSize = 0,
+      initSubscribe = 1
+    ))
+
+    val messages = mutableListOf("h1", "h2", "h3")
+
+    manager.tell(
+      messages.toBatchMessage(),
+      ActorRef.noSender()
+    )
+
+    // prepare connect
+    m0.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    var msgRecycle: AppendMessage
+
+    // m0 connect ready
+    manager.notifyConnected(m0)
+    m0.consumeAppendMessage(messages)
+
+    // m1 connect ready
+    manager.notifyConnected(m1)
+    m1.consumeAppendMessage(messages)
+
+    // m2 connect ready
+    manager.notifyConnected(m2)
+    m2.consumeAppendMessage(messages).also { msgRecycle = it }
+
+    // m2 disconnected
+    manager.notifyDisconnected(m2)
+    m2.expectMsgClass(SocketManager.RequestClearSubscribe::class.java)
+
+    // balance message
+    m0.expectMsgClass(AppendMessage::class.java).also { assert(msgRecycle == it) }
   }
 
   /**
@@ -138,6 +161,31 @@ class PooledSocketManagerTest {
         config
       )
     )
+  }
+
+  /**
+   * Parse string list to batch subscribe message
+   */
+  private fun List<String>.toBatchMessage(): BatchSendMessage {
+    return BatchSendMessage(
+      this.map { AppendMessage(SubscribeInfo(it, "test", "")) }
+    )
+  }
+
+  private fun ActorRef.notifyConnected(probe: TestKit) {
+    this.tell(SocketState.CONNECTING, probe.ref)
+    this.tell(SocketState.CONNECTED, probe.ref)
+  }
+
+  private fun ActorRef.notifyDisconnected(probe: TestKit) {
+    this.tell(SocketState.DISCONNECTED, probe.ref)
+  }
+
+  private fun TestKit.consumeAppendMessage(items: MutableList<String>): AppendMessage {
+    return this.expectMsgClass(AppendMessage::class.java).also {
+      assert(items.contains(it.info.subscribe))
+      items.remove(it.info.subscribe)
+    }
   }
 
   /**

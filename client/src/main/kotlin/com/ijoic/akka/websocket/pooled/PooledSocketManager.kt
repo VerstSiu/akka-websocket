@@ -249,6 +249,7 @@ class PooledSocketManager(
     }
     if (oldState == SocketState.CONNECTED) {
       recycleChannelMessages(channel.messages)
+      child.tell(SocketManager.RequestClearSubscribe(), self)
     } else if (state == SocketState.CONNECTED) {
       balanceChannelMessages(child)
     }
@@ -331,6 +332,7 @@ class PooledSocketManager(
       if (!subscribeMessages.isEmpty()) {
         child.tell(subscribeMessages.autoBatch(), self)
         activeMessages.addMessageItems(subscribeMessages)
+        channel.messages.addMessageItems(subscribeMessages)
       }
 
       // queue messages
@@ -369,7 +371,7 @@ class PooledSocketManager(
     val msgSize = messages.size
     val oldMsgSize = activeMessages.subscribeSize
     val newMsgSize = oldMsgSize + msgSize
-    val averageSize = (newMsgSize.toFloat() / channels.size + 0.5F).toInt()
+    val averageSize = newMsgSize.ceilDivided(channels.size)
 
     var start = 0
     var editMsgSize: Int
@@ -383,7 +385,7 @@ class PooledSocketManager(
       if (editMsgSize > 0) {
         editMessages = messages.subList(start, start + editMsgSize)
         channel.messages.addMessageItems(editMessages)
-        channel.ref.tell(BatchSendMessage(editMessages), self)
+        channel.ref.tell(editMessages.autoBatch(), self)
         start += editMsgSize
       }
     }
