@@ -13,9 +13,10 @@ repositories {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    implementation 'com.typesafe.akka:akka-actor_2.12:2.5.18'
+    implementation 'com.typesafe.akka:akka-actor_2.12:2.5.19'
     compile 'com.github.VerstSiu.metrics-message:metrics:372acb967b'
     testImplementation 'junit:junit:4.12'
+    testImplementation 'com.typesafe.akka:akka-testkit_2.12:2.5.16'
 }
 
 compileKotlin {

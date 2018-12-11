@@ -35,9 +35,8 @@ import com.ijoic.metrics.statReceived
  * @author verstsiu created at 2018-12-06 20:38
  */
 class PooledSocketManager(
-  private val options: ClientOptions,
   private val requester: ActorRef,
-  private val createClient: () -> SocketClient?,
+  private val createManager: (ActorContext, ActorRef, Int) -> ActorRef,
   config: PooledConfig): AbstractActor() {
 
   private val config: PooledConfig = config.checkValid()
@@ -285,9 +284,11 @@ class PooledSocketManager(
       return
     }
     repeat(childSize) {
-      val child = context.actorOf(SocketManager.props(options, self, createClient()), "child-${++genChildIndex}")
+      val child = createManager(context, self, genChildIndex)
+      ++genChildIndex
 
       child.tell(SocketManager.RequestConnect(), self)
+      println("request connect: child - ${child.path()}")
       context.watch(child)
       childManagers.add(child)
     }
@@ -327,7 +328,11 @@ class PooledSocketManager(
     balanceAddSubscribeMessages(activeChannels, subscribeMessages)
 
     // queue messages
-    child.tell(BatchSendMessage(queueMessages), self)
+    if (queueMessages.size == 1) {
+      child.tell(queueMessages[0], self)
+    } else {
+      child.tell(BatchSendMessage(queueMessages), self)
+    }
   }
 
   private fun balanceAddSubscribeMessages(channels: List<ChannelState>, messages: List<SendMessage>) {
@@ -366,12 +371,24 @@ class PooledSocketManager(
 
   companion object {
     /**
+     * Returns pooled socket manager props instance with [requester], [createManager] and pool [config]
+     */
+    @JvmStatic
+    @JvmOverloads
+    internal fun props(requester: ActorRef, createManager: (ActorContext, ActorRef, Int) -> ActorRef, config: PooledConfig? = null): Props {
+      return Props.create(PooledSocketManager::class.java, requester, createManager, config ?: PooledConfig())
+    }
+
+    /**
      * Returns pooled socket manager props instance with [options], [requester], [createClient] and pool [config]
      */
     @JvmStatic
     @JvmOverloads
     fun props(options: ClientOptions, requester: ActorRef, createClient: (() -> SocketClient?)? = null, config: PooledConfig? = null): Props {
-      return Props.create(PooledSocketManager::class.java, options, requester, createClient, config ?: PooledConfig())
+      val createManager: (ActorContext, ActorRef, Int) -> ActorRef = { context, ref, id ->
+        context.actorOf(SocketManager.props(options, ref, createClient?.invoke()), "child-$id")
+      }
+      return props(requester, createManager, config)
     }
   }
 }
