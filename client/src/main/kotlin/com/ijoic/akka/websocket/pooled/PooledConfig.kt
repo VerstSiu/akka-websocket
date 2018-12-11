@@ -42,7 +42,7 @@ data class PooledConfig(
 
   companion object {
     private const val DEFAULT_INIT_CONNECTION_SIZE = 2
-    private const val DEFAULT_IDLE_CONNECTION_SIZE = 2
+    private const val DEFAULT_IDLE_CONNECTION_SIZE = 0
     private const val DEFAULT_INIT_SUBSCRIBE = 20
     private const val DEFAULT_MAX_SUBSCRIBE = 40
   }

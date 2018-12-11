@@ -30,12 +30,12 @@ internal class PooledMessageBox {
   /**
    * Append messages
    */
-  private val appendMessages = mutableMapOf<String, MutableList<Serializable>>()
+  private val appendMessages = mutableMapOf<String, MutableList<SubscribeInfo>>()
 
   /**
    * Unique messages
    */
-  private val uniqueMessages = mutableMapOf<String, Serializable>()
+  private val uniqueMessages = mutableMapOf<String, SubscribeInfo>()
 
   /**
    * Queue messages
@@ -54,44 +54,49 @@ internal class PooledMessageBox {
   fun addMessage(message: SendMessage): Boolean {
     when(message) {
       is AppendMessage -> {
-        val group = message.group
-        val msgContent = message.message
-        val msgList = appendMessages[group] ?: mutableListOf<Serializable>().also {
+        val info = message.info
+        val group = info.group
+        val msgList = appendMessages[group] ?: mutableListOf<SubscribeInfo>().also {
           appendMessages[group] = it
         }
 
-        if (msgList.isEmpty() || !msgList.contains(msgContent)) {
-          msgList.add(msgContent)
+        if (msgList.isEmpty() || !msgList.containsInfo(info)) {
+          msgList.add(info)
           ++subscribeSize
           return true
         }
       }
       is ReplaceMessage -> {
-        val group = message.group
-        val msgContent = message.message
+        val info = message.info
+        val group = info.group
         val msgOld = uniqueMessages[group]
 
-        if (msgOld != msgContent) {
+        if (msgOld?.subscribe != info.subscribe) {
           if (msgOld == null) {
             ++subscribeSize
           }
-          uniqueMessages[group] = msgContent
+          uniqueMessages[group] = info
           return true
         }
       }
       is ClearAppendMessage -> {
-        val group = message.group
-        val msgContent = message.pairMessage
+        val info = message.info
+        val group = info.group
         val msgList = appendMessages[group]
 
-        if (msgList != null && msgList.contains(msgContent)) {
-          msgList.remove(msgContent)
-          --subscribeSize
+        if (msgList != null) {
+          val oldInfo = msgList.oldInfoOrNull(info)
+
+          if (oldInfo != null) {
+            msgList.remove(oldInfo)
+            --subscribeSize
+          }
           return true
         }
       }
       is ClearReplaceMessage -> {
-        val group = message.group
+        val info = message.info
+        val group = info.group
         val msgOld = uniqueMessages[group]
 
         if (msgOld != null) {
@@ -118,18 +123,23 @@ internal class PooledMessageBox {
   private fun removeMessage(message: SendMessage): Boolean {
     when(message) {
       is AppendMessage -> {
-        val group = message.group
-        val msgContent = message.message
+        val info = message.info
+        val group = info.group
         val msgList = appendMessages[group]
 
-        if (msgList != null && msgList.contains(msgContent)) {
-          msgList.remove(msgContent)
-          --subscribeSize
+        if (msgList != null) {
+          val oldInfo = msgList.oldInfoOrNull(info)
+
+          if (oldInfo != null) {
+            msgList.remove(oldInfo)
+            --subscribeSize
+          }
           return true
         }
       }
       is ReplaceMessage -> {
-        val group = message.group
+        val info = message.info
+        val group = info.group
         val msgOld = uniqueMessages[group]
 
         if (msgOld != null) {
@@ -215,39 +225,41 @@ internal class PooledMessageBox {
    * Returns [message] contains status
    */
   fun containsMessage(message: AppendMessage): Boolean {
-    val group = message.group
-    val msgContent = message.message
+    val info = message.info
+    val group = info.group
     val msgList = appendMessages[group]
 
-    return msgList != null && msgList.contains(msgContent)
+    return msgList != null && msgList.containsInfo(info)
   }
 
   /**
    * Returns [message] contains status
    */
   fun containsMessage(message: ReplaceMessage): Boolean {
-    val group = message.group
+    val info = message.info
+    val group = info.group
     val msgOld = uniqueMessages[group]
 
-    return msgOld == message.message
+    return msgOld?.subscribe == info.subscribe
   }
 
   /**
    * Returns reverse [message] contains status
    */
   fun containsReverseMessage(message: ClearAppendMessage): Boolean {
-    val group = message.group
-    val msgContent = message.pairMessage
+    val info = message.info
+    val group = info.group
     val msgList = appendMessages[group]
 
-    return msgList != null && msgList.contains(msgContent)
+    return msgList != null && msgList.containsInfo(info)
   }
 
   /**
    * Returns reverse [message] contains status
    */
   fun containsReverseMessage(message: ClearReplaceMessage): Boolean {
-    val group = message.group
+    val info = message.info
+    val group = info.group
     val msgOld = uniqueMessages[group]
 
     return msgOld != null
@@ -259,11 +271,11 @@ internal class PooledMessageBox {
   fun allSubscribeMessages(): List<SendMessage> {
     val messages = mutableListOf<SendMessage>()
 
-    for ((group, msgList) in appendMessages) {
-      messages.addAll(msgList.map { AppendMessage(it, group) })
+    for ((_, info) in appendMessages) {
+      messages.addAll(info.map { AppendMessage(it) })
     }
-    for ((group, msgContent) in uniqueMessages) {
-      messages.add(ReplaceMessage(msgContent, group))
+    for ((_, info) in uniqueMessages) {
+      messages.add(ReplaceMessage(info))
     }
     return messages
   }
@@ -274,8 +286,8 @@ internal class PooledMessageBox {
   private fun allAppendMessages(): List<SendMessage> {
     val messages = mutableListOf<SendMessage>()
 
-    for ((group, msgList) in appendMessages) {
-      messages.addAll(msgList.map { AppendMessage(it, group) })
+    for ((_, info) in appendMessages) {
+      messages.addAll(info.map { AppendMessage(it) })
     }
     return messages
   }
@@ -286,8 +298,8 @@ internal class PooledMessageBox {
   private fun allUniqueMessages(): List<SendMessage> {
     val messages = mutableListOf<SendMessage>()
 
-    for ((group, msgContent) in uniqueMessages) {
-      messages.add(ReplaceMessage(msgContent, group))
+    for ((_, info) in uniqueMessages) {
+      messages.add(ReplaceMessage(info))
     }
     return messages
   }

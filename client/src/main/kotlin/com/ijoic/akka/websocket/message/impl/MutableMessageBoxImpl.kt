@@ -17,8 +17,7 @@
  */
 package com.ijoic.akka.websocket.message.impl
 
-import com.ijoic.akka.websocket.message.MessageBox
-import com.ijoic.akka.websocket.message.MutableMessageBox
+import com.ijoic.akka.websocket.message.*
 import java.io.Serializable
 
 /**
@@ -29,15 +28,15 @@ import java.io.Serializable
 internal class MutableMessageBoxImpl(
   private val src: MessageBox = MessageBoxImpl.blank): MutableMessageBox {
 
-  private var _appendMessages: MutableMap<String, Set<Serializable>>? = null
-  private var _uniqueMessages: MutableMap<String, Serializable>? = null
+  private var _appendMessages: MutableMap<String, Set<SubscribeInfo>>? = null
+  private var _uniqueMessages: MutableMap<String, SubscribeInfo>? = null
   private var _queueMessages: MutableList<Serializable>? = null
 
   private var editCount = 0
 
-  override val appendMessages: Map<String, Set<Serializable>>
+  override val appendMessages: Map<String, Set<SubscribeInfo>>
     get() = _appendMessages ?: src.appendMessages
-  override val uniqueMessages: Map<String, Serializable>
+  override val uniqueMessages: Map<String, SubscribeInfo>
     get() = _uniqueMessages ?: src.uniqueMessages
   override val queueMessages: List<Serializable>
     get() = _queueMessages ?: src.queueMessages
@@ -56,22 +55,33 @@ internal class MutableMessageBoxImpl(
       measureSubscribeMessageSize()
     }
 
-  override fun append(message: Serializable, group: String): Boolean {
+  override fun dispatchSubscribeMessage(message: SubscribeMessage): Boolean {
+    return when(message) {
+      is AppendMessage -> append(message.info)
+      is ReplaceMessage -> replace(message.info)
+      is ClearAppendMessage -> clearAppend(message.info)
+      is ClearReplaceMessage -> clearReplace(message.info)
+      else -> false
+    }
+  }
+
+  private fun append(info: SubscribeInfo): Boolean {
+    val group = info.group
     val oldMessages = src.appendMessages[group]
     var statChanged = false
 
-    if (oldMessages == null || !oldMessages.contains(message)) {
+    if (oldMessages == null || !oldMessages.containsInfo(info)) {
       val groupMap = _appendMessages ?: src.appendMessages.toMutableMap()
       val oldEditMessages = groupMap[group]
 
       if (oldEditMessages == null) {
-        groupMap[group] = setOf(message)
+        groupMap[group] = setOf(info)
         statChanged = true
         ++editCount
-      } else if (!oldEditMessages.contains(message)) {
+      } else if (!oldEditMessages.containsInfo(info)) {
         groupMap[group] = oldEditMessages
           .toMutableSet()
-          .apply { add(message) }
+          .apply { add(info) }
         statChanged = true
         ++editCount
       }
@@ -80,14 +90,15 @@ internal class MutableMessageBoxImpl(
     return statChanged
   }
 
-  override fun replace(message: Serializable, group: String): Boolean {
+  private fun replace(info: SubscribeInfo): Boolean {
+    val group = info.group
     val oldMessages = src.uniqueMessages[group]
     var statChanged = false
 
-    if (oldMessages != message) {
+    if (oldMessages?.subscribe != info.subscribe) {
       val groupMap = _uniqueMessages ?: src.uniqueMessages.toMutableMap()
 
-      groupMap[group] = message
+      groupMap[group] = info
       statChanged = true
       ++editCount
       _uniqueMessages = groupMap
@@ -95,33 +106,39 @@ internal class MutableMessageBoxImpl(
     return statChanged
   }
 
-  override fun clearAppend(message: Serializable, group: String): Boolean {
+  private fun clearAppend(info: SubscribeInfo): Boolean {
+    val group = info.group
     val oldMessages = src.appendMessages[group]
     var statChanged = false
 
-    if (oldMessages != null && oldMessages.contains(message)) {
+    if (oldMessages != null && oldMessages.containsInfo(info)) {
       val groupMap = _appendMessages ?: src.appendMessages.toMutableMap()
       val oldEditMessages = groupMap[group]
 
-      if (oldEditMessages != null && oldEditMessages.contains(message)) {
-        val newEditMessages = oldEditMessages
-          .toMutableSet()
-          .apply { remove(message) }
+      if (oldEditMessages != null) {
+        val oldInfo = oldEditMessages.oldInfoOrNull(info)
 
-        if (newEditMessages.isEmpty()) {
-          groupMap.remove(group)
-        } else {
-          groupMap[group] = newEditMessages
+        if (oldInfo != null) {
+          val newEditMessages = oldEditMessages
+            .toMutableSet()
+            .apply { remove(oldInfo) }
+
+          if (newEditMessages.isEmpty()) {
+            groupMap.remove(group)
+          } else {
+            groupMap[group] = newEditMessages
+          }
+          statChanged = true
+          ++editCount
         }
-        statChanged = true
-        ++editCount
       }
       _appendMessages = groupMap
     }
     return statChanged
   }
 
-  override fun clearReplace(group: String): Boolean {
+  private fun clearReplace(info: SubscribeInfo): Boolean {
+    val group = info.group
     val oldMessages = src.uniqueMessages[group]
     var statChanged = false
 

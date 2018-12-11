@@ -28,12 +28,12 @@ internal interface MessageBox {
   /**
    * Append messages (group - set items)
    */
-  val appendMessages: Map<String, Set<Serializable>>
+  val appendMessages: Map<String, Set<SubscribeInfo>>
 
   /**
    * Unique messages (group - unique item)
    */
-  val uniqueMessages: Map<String, Serializable>
+  val uniqueMessages: Map<String, SubscribeInfo>
 
   /**
    * Queue messages (items)

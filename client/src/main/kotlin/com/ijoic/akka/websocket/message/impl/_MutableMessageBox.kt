@@ -26,10 +26,7 @@ import com.ijoic.akka.websocket.message.*
  */
 internal fun MutableMessageBox.dispatchMessage(msg: SendMessage): Boolean {
   return when(msg) {
-    is AppendMessage -> append(msg.message, msg.group)
-    is ReplaceMessage -> replace(msg.message, msg.group)
-    is ClearAppendMessage -> clearAppend(msg.pairMessage, msg.group)
-    is ClearReplaceMessage -> clearReplace(msg.group)
+    is SubscribeMessage -> dispatchSubscribeMessage(msg)
     is QueueMessage -> queue(msg.message)
   }
 }

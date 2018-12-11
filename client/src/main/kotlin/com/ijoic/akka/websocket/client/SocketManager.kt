@@ -100,19 +100,19 @@ class SocketManager(
         when (it) {
           is AppendMessage -> if (editMessages.isChanged) {
             subscribeChanged = true
-            client.send(it.message)
+            client.send(it.info.subscribe)
           }
           is ReplaceMessage -> if (editMessages.isChanged) {
             subscribeChanged = true
-            client.send(it.message)
+            client.send(it.info.subscribe)
           }
           is ClearAppendMessage -> if (editMessages.isChanged) {
             subscribeChanged = true
-            client.send(it.message)
+            client.send(it.info.unsubscribe)
           }
           is ClearReplaceMessage -> if (editMessages.isChanged) {
             subscribeChanged = true
-            client.send(it.message)
+            client.send(it.info.unsubscribe)
           }
           is QueueMessage -> {
             client.send(it.message)
@@ -136,19 +136,19 @@ class SocketManager(
       when (msg) {
         is AppendMessage -> if (editMessages.isChanged) {
           context.become(waitingForReplies(editStatus, status))
-          client.send(msg.message)
+          client.send(msg.info.subscribe)
         }
         is ReplaceMessage -> if (editMessages.isChanged) {
           context.become(waitingForReplies(editStatus, status))
-          client.send(msg.message)
+          client.send(msg.info.subscribe)
         }
         is ClearAppendMessage -> if (editMessages.isChanged) {
           context.become(waitingForReplies(editStatus, status))
-          client.send(msg.message)
+          client.send(msg.info.unsubscribe)
         }
         is ClearReplaceMessage -> if (editMessages.isChanged) {
           context.become(waitingForReplies(editStatus, status))
-          client.send(msg.message)
+          client.send(msg.info.unsubscribe)
         }
         is QueueMessage -> {
           client.send(msg.message)

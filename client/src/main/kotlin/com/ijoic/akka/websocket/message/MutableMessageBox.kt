@@ -26,24 +26,9 @@ import java.io.Serializable
  */
 internal interface MutableMessageBox: MessageBox {
   /**
-   * Append [message] within [group]
+   * Dispatch subscribe [message]
    */
-  fun append(message: Serializable, group: String): Boolean
-
-  /**
-   * Replace [message] with [group]
-   */
-  fun replace(message: Serializable, group: String): Boolean
-
-  /**
-   * Clear append [message] within [group]
-   */
-  fun clearAppend(message: Serializable, group: String): Boolean
-
-  /**
-   * Clear replace message within [group]
-   */
-  fun clearReplace(group: String): Boolean
+  fun dispatchSubscribeMessage(message: SubscribeMessage): Boolean
 
   /**
    * Queue [message] for which send once after socket connect completed

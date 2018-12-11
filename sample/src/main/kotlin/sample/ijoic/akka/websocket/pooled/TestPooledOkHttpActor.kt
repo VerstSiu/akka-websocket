@@ -6,7 +6,9 @@ import com.ijoic.akka.websocket.OkHttpSocketClient
 import com.ijoic.akka.websocket.message.AppendMessage
 import com.ijoic.akka.websocket.message.BatchSendMessage
 import com.ijoic.akka.websocket.message.QueueMessage
+import com.ijoic.akka.websocket.message.SubscribeInfo
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
+import com.ijoic.akka.websocket.pooled.PooledConfig
 import com.ijoic.akka.websocket.pooled.PooledSocketManager
 import sample.ijoic.akka.websocket.ReceiverActor
 import java.time.Duration
@@ -25,7 +27,14 @@ fun main() {
 
   val receiver = system.actorOf(ReceiverActor.props(), "msg-receiver")
   val manager = system.actorOf(
-    PooledSocketManager.props(options, receiver, { OkHttpSocketClient() }),
+    PooledSocketManager.props(
+      options,
+      receiver,
+      { OkHttpSocketClient() },
+      PooledConfig(
+        idleConnectionSize = 0
+      )
+    ),
     "pooled-manager"
   )
 
@@ -52,9 +61,9 @@ fun main() {
         manager.tell(
           BatchSendMessage(
             items = listOf(
-              AppendMessage("t1", "test"),
-              AppendMessage("t2", "test"),
-              AppendMessage("t3", "test")
+              AppendMessage(SubscribeInfo("t1", "test", "")),
+              AppendMessage(SubscribeInfo("t2", "test", "")),
+              AppendMessage(SubscribeInfo("t3", "test", ""))
             )
           ),
           ActorRef.noSender()

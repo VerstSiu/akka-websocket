@@ -28,9 +28,21 @@ import java.io.Serializable
 sealed class SendMessage: MetricsMessage(), Serializable
 
 /**
+ * Subscribe message
+ *
+ * @author verstsiu created at 2018-12-11 17:44
+ */
+abstract class SubscribeMessage: SendMessage(), Serializable {
+  /**
+   * Subscribe info
+   */
+  abstract val info: SubscribeInfo
+}
+
+/**
  * Append message
  */
-data class AppendMessage(val message: Serializable, val group: String): SendMessage(), Serializable {
+data class AppendMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -39,7 +51,7 @@ data class AppendMessage(val message: Serializable, val group: String): SendMess
 /**
  * Replace message
  */
-data class ReplaceMessage(val message: Serializable, val group: String): SendMessage(), Serializable {
+data class ReplaceMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -48,7 +60,7 @@ data class ReplaceMessage(val message: Serializable, val group: String): SendMes
 /**
  * Clear append message
  */
-data class ClearAppendMessage(val message: Serializable, val group: String, val pairMessage: Serializable): SendMessage(), Serializable {
+data class ClearAppendMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -57,7 +69,7 @@ data class ClearAppendMessage(val message: Serializable, val group: String, val 
 /**
  * Clear replace message
  */
-data class ClearReplaceMessage(val message: Serializable, val group: String): SendMessage(), Serializable {
+data class ClearReplaceMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -78,6 +90,17 @@ data class QueueMessage(val message: Serializable): SendMessage(), Serializable 
 data class BatchSendMessage(val items: List<SendMessage>): MetricsMessage()
 
 /**
+ * Subscribe info
+ *
+ * @author verstsiu created at 2018-12-11 17:35
+ */
+data class SubscribeInfo(val subscribe: Serializable, val group: String, val unsubscribe: Serializable): Serializable {
+  companion object {
+    private const val serialVersionUID: Long = 1
+  }
+}
+
+/**
  * Wrap current message items as batch or single send message automatically
  */
 internal fun List<SendMessage>.autoBatch(): MetricsMessage {
@@ -86,4 +109,18 @@ internal fun List<SendMessage>.autoBatch(): MetricsMessage {
   } else {
     BatchSendMessage(this)
   }
+}
+
+/**
+ * Returns subscribe [info] contains status of current collection items
+ */
+internal fun Collection<SubscribeInfo>.containsInfo(info: SubscribeInfo): Boolean {
+  return this.any { it.subscribe == info.subscribe }
+}
+
+/**
+ * Returns old subscribe [info] or null
+ */
+internal fun Collection<SubscribeInfo>.oldInfoOrNull(info: SubscribeInfo): SubscribeInfo? {
+  return this.firstOrNull { it.subscribe == info.subscribe }
 }

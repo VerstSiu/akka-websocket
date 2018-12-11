@@ -66,34 +66,34 @@ internal fun MessageBox.measureSubscribeMessageSize(): Int {
  * Returns [msg] contains status
  */
 internal fun MessageBox.containsMessage(msg: AppendMessage): Boolean {
-  val items = appendMessages[msg.group]
+  val items = appendMessages[msg.info.group]
 
-  return items != null && items.contains(msg.message)
+  return items != null && items.contains(msg.info.subscribe)
 }
 
 /**
  * Returns [msg] contains status
  */
 internal fun MessageBox.containsMessage(msg: ReplaceMessage): Boolean {
-  val item = uniqueMessages[msg.group]
+  val item = uniqueMessages[msg.info.group]
 
-  return item != null && item == msg.message
+  return item != null && item == msg.info.subscribe
 }
 
 /**
  * Returns reverse [msg] contains status
  */
 internal fun MessageBox.containsReverseMessage(msg: ClearAppendMessage): Boolean {
-  val items = appendMessages[msg.group]
+  val items = appendMessages[msg.info.group]
 
-  return items != null && items.contains(msg.pairMessage)
+  return items != null && items.contains(msg.info.unsubscribe)
 }
 
 /**
  * Returns reverse [msg] contains status
  */
 internal fun MessageBox.containsReverseMessage(msg: ClearReplaceMessage): Boolean {
-  val items = appendMessages[msg.group]
+  val items = appendMessages[msg.info.group]
 
   return items != null
 }

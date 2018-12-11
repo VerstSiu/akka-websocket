@@ -7,6 +7,7 @@ import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.message.AppendMessage
 import com.ijoic.akka.websocket.message.BatchSendMessage
 import com.ijoic.akka.websocket.message.QueueMessage
+import com.ijoic.akka.websocket.message.SubscribeInfo
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import java.time.Duration
 
@@ -30,7 +31,7 @@ fun main() {
   manager.tell(
     BatchSendMessage(
       items = listOf(
-        AppendMessage("Hello world!", "test"),
+        AppendMessage(SubscribeInfo("Hello world!", "test", "")),
         QueueMessage("I'm here!")
       )
     ),

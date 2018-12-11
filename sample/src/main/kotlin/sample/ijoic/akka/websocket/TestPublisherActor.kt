@@ -5,6 +5,7 @@ import akka.actor.ActorSystem
 import com.ijoic.akka.websocket.PusherSocketClient
 import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.message.AppendMessage
+import com.ijoic.akka.websocket.message.SubscribeInfo
 import com.ijoic.akka.websocket.options.WrapPusherOptions
 import com.ijoic.akka.websocket.pusher.AddSubscribe
 
@@ -19,8 +20,11 @@ fun main() {
 
   manager.tell(
     AppendMessage(
-      AddSubscribe(channel = "live_trades", event = "trade"),
-      "ticker"
+      SubscribeInfo(
+        AddSubscribe(channel = "live_trades", event = "trade"),
+        "ticker",
+        ""
+      )
     ),
     ActorRef.noSender()
   )

@@ -25,6 +25,7 @@ import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.message.AppendMessage
 import com.ijoic.akka.websocket.message.BatchSendMessage
 import com.ijoic.akka.websocket.message.QueueMessage
+import com.ijoic.akka.websocket.message.SubscribeInfo
 import com.ijoic.akka.websocket.state.SocketState
 import org.junit.AfterClass
 import org.junit.BeforeClass
@@ -78,9 +79,9 @@ class PooledSocketManagerTest {
     manager.tell(
       BatchSendMessage(
         items = listOf(
-          AppendMessage("h1", "test"),
-          AppendMessage("h2", "test"),
-          AppendMessage("h3", "test")
+          AppendMessage(SubscribeInfo("h1", "test", "")),
+          AppendMessage(SubscribeInfo("h2", "test", "")),
+          AppendMessage(SubscribeInfo("h3", "test", ""))
         )
       ),
       ActorRef.noSender()
@@ -99,8 +100,8 @@ class PooledSocketManagerTest {
 
     // deploy subscribe message
     m0.expectMsgClass(AppendMessage::class.java).also {
-      assert(consumedMessages.contains(it.message))
-      consumedMessages.remove(it.message)
+      assert(consumedMessages.contains(it.info.subscribe))
+      consumedMessages.remove(it.info.subscribe)
     }
 
     // m1 connect ready
@@ -109,8 +110,8 @@ class PooledSocketManagerTest {
 
     // deploy subscribe message
     m1.expectMsgClass(AppendMessage::class.java).also {
-      assert(consumedMessages.contains(it.message))
-      consumedMessages.remove(it.message)
+      assert(consumedMessages.contains(it.info.subscribe))
+      consumedMessages.remove(it.info.subscribe)
     }
 
     // m2 connect ready
@@ -119,8 +120,8 @@ class PooledSocketManagerTest {
 
     // deploy subscribe message
     m2.expectMsgClass(AppendMessage::class.java).also {
-      assert(consumedMessages.contains(it.message))
-      consumedMessages.remove(it.message)
+      assert(consumedMessages.contains(it.info.subscribe))
+      consumedMessages.remove(it.info.subscribe)
     }
   }
 
