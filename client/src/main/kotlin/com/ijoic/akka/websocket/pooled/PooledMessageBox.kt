@@ -315,6 +315,7 @@ internal class PooledMessageBox {
    * Reset all contained messages
    */
   fun reset() {
+    subscribeSize = 0
     appendMessages.clear()
     uniqueMessages.clear()
     queueMessages.clear()

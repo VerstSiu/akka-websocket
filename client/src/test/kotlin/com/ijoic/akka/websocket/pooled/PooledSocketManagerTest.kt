@@ -22,10 +22,7 @@ import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.testkit.javadsl.TestKit
 import com.ijoic.akka.websocket.client.SocketManager
-import com.ijoic.akka.websocket.message.AppendMessage
-import com.ijoic.akka.websocket.message.BatchSendMessage
-import com.ijoic.akka.websocket.message.QueueMessage
-import com.ijoic.akka.websocket.message.SubscribeInfo
+import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.state.SocketState
 import org.junit.AfterClass
 import org.junit.BeforeClass
@@ -148,6 +145,64 @@ class PooledSocketManagerTest {
     m0.expectMsgClass(AppendMessage::class.java).also { assert(msgRecycle == it) }
   }
 
+  @Test
+  fun testConnectionAbortResume() {
+    val receiver = TestKit(system)
+
+    val m0 = TestKit(system)
+    val m1 = TestKit(system)
+    val m2 = TestKit(system)
+
+    val manager = managerOf(receiver, listOf(m0, m1, m2), PooledConfig(
+      initConnectionSize = 2,
+      idleConnectionSize = 0,
+      initSubscribe = 2
+    ))
+
+    val messagesAll = mutableListOf("h1", "h2", "h3", "h4", "h5", "h6")
+    val messagesAssume = mutableListOf("h1", "h2", "h3", "h4", "h5", "h6")
+
+    manager.tell(
+      messagesAll.toBatchMessage(),
+      ActorRef.noSender()
+    )
+
+    // prepare connect
+    m0.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    var msgRecycle: List<SendMessage>
+
+    // m0 connect ready
+    manager.notifyConnected(m0)
+    m0.consumeBatchMessage(messagesAssume, 2)
+
+    // m1 connect ready
+    manager.notifyConnected(m1)
+    m1.consumeBatchMessage(messagesAssume, 2)
+
+    // m2 connect ready
+    manager.notifyConnected(m2)
+    m2.consumeBatchMessage(messagesAssume, 2).also { msgRecycle = it.items }
+
+    // m2 disconnected
+    manager.notifyDisconnected(m2)
+    m2.expectMsgClass(SocketManager.RequestClearSubscribe::class.java)
+
+    // balance message
+    val msgRecycleTemp = msgRecycle
+      .map { (it as AppendMessage).info.subscribe as String }
+      .toMutableList()
+
+    m0.consumeAppendMessage(msgRecycleTemp)
+    m1.consumeAppendMessage(msgRecycleTemp)
+
+    // m2 connected
+    manager.notifyConnected(m2)
+    m2.consumeBatchMessage(messagesAll.toMutableList(), 2)
+  }
+
   /**
    * Returns pooled socket manager instance with [requester], [probes] and [config]
    */
@@ -179,6 +234,17 @@ class PooledSocketManagerTest {
 
   private fun ActorRef.notifyDisconnected(probe: TestKit) {
     this.tell(SocketState.DISCONNECTED, probe.ref)
+  }
+
+  private fun TestKit.consumeBatchMessage(items: MutableList<String>, batchSize: Int): BatchSendMessage {
+    return this.expectMsgClass(BatchSendMessage::class.java).also { event ->
+      assert(event.items.size == batchSize)
+      event.items.forEach { item ->
+        item as AppendMessage
+        assert(items.contains(item.info.subscribe))
+        items.remove(item.info.subscribe)
+      }
+    }
   }
 
   private fun TestKit.consumeAppendMessage(items: MutableList<String>): AppendMessage {

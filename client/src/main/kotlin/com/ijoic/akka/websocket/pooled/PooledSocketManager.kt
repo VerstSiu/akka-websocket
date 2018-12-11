@@ -213,11 +213,11 @@ class PooledSocketManager(
     context.unwatch(child)
     childManagers.remove(child)
 
-    val messages = channelsMap[child]?.messages
+    val channel = channelsMap[child]
     channelsMap.remove(child)
 
-    if (messages != null) {
-      recycleChannelMessages(messages)
+    if (channel != null) {
+      recycleChannelMessages(channel)
     }
   }
 
@@ -248,7 +248,7 @@ class PooledSocketManager(
       return
     }
     if (oldState == SocketState.CONNECTED) {
-      recycleChannelMessages(channel.messages)
+      recycleChannelMessages(channel)
       child.tell(SocketManager.RequestClearSubscribe(), self)
     } else if (state == SocketState.CONNECTED) {
       balanceChannelMessages(child)
@@ -295,20 +295,21 @@ class PooledSocketManager(
       ++genChildIndex
 
       child.tell(SocketManager.RequestConnect(), self)
-      println("request connect: child - ${child.path()}")
       context.watch(child)
       childManagers.add(child)
     }
   }
 
-  private fun recycleChannelMessages(messages: PooledMessageBox) {
+  private fun recycleChannelMessages(channel: ChannelState) {
+    val messages = channel.messages
+
     if (messages.subscribeSize > 0) {
       val subscribeMessages = messages.allSubscribeMessages()
       messages.reset()
 
       if (!subscribeMessages.isEmpty()) {
         activeMessages.removeMessageItems(subscribeMessages)
-        val activeChannels = genActiveChannels()
+        val activeChannels = genActiveChannels().filter { it.ref != channel.ref }
 
         if (activeChannels.isEmpty()) {
           idleMessages.addMessageItems(subscribeMessages)
@@ -345,7 +346,6 @@ class PooledSocketManager(
   }
 
   private fun balanceIdleMessages(child: ActorRef) {
-    // TODO adjust balance strategy
     val activeChannels = genActiveChannels()
     val channelSize = activeChannels.size
 
@@ -357,9 +357,7 @@ class PooledSocketManager(
     idleMessages.reset()
 
     // subscribe messages
-    if (!subscribeMessages.isEmpty()) {
-      balanceAddSubscribeMessages(activeChannels, subscribeMessages)
-    }
+    balanceAddSubscribeMessages(activeChannels, subscribeMessages)
 
     // queue messages
     if (!queueMessages.isEmpty()) {
@@ -373,23 +371,55 @@ class PooledSocketManager(
     val newMsgSize = oldMsgSize + msgSize
     val averageSize = newMsgSize.ceilDivided(channels.size)
 
+    // recycle messages from which subscribe messages overload
+    val appendMessages = messages.toMutableList()
+
+    channels.forEach { channel ->
+      val channelMsgSize = channel.messages.subscribeSize
+
+      if (channelMsgSize > averageSize) {
+        val shiftMessages = channel.messages.popSubscribeMessages(channelMsgSize - averageSize)
+        activeMessages.removeMessageItems(shiftMessages)
+        appendMessages.addAll(shiftMessages)
+
+        channel.ref.tell(
+          shiftMessages
+            .mapNotNull {
+              when (it) {
+                is AppendMessage -> ClearAppendMessage(it.info)
+                is ReplaceMessage -> ClearReplaceMessage(it.info)
+                else -> null
+              }
+            }
+            .autoBatch(),
+          self
+        )
+      }
+    }
+
+    if (appendMessages.isEmpty()) {
+      return
+    }
+
+    // balance subscribe
+    val appendMsgSize = appendMessages.size
     var start = 0
     var editMsgSize: Int
     var editMessages: List<SendMessage>
 
     channels.forEach { channel ->
       editMsgSize = averageSize - channel.messages.subscribeSize
-      editMsgSize = Math.min(msgSize - start, editMsgSize)
+      editMsgSize = Math.min(appendMsgSize - start, editMsgSize)
       editMsgSize = Math.max(editMsgSize, 0)
 
       if (editMsgSize > 0) {
-        editMessages = messages.subList(start, start + editMsgSize)
+        editMessages = appendMessages.subList(start, start + editMsgSize)
         channel.messages.addMessageItems(editMessages)
         channel.ref.tell(editMessages.autoBatch(), self)
         start += editMsgSize
       }
     }
-    activeMessages.addMessageItems(messages)
+    activeMessages.addMessageItems(appendMessages)
   }
 
   /**
