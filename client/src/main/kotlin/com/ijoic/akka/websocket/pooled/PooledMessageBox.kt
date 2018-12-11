@@ -84,7 +84,7 @@ internal class PooledMessageBox {
         val msgContent = message.pairMessage
         val msgList = appendMessages[group]
 
-        if (msgList != null && !msgList.contains(msgContent)) {
+        if (msgList != null && msgList.contains(msgContent)) {
           msgList.remove(msgContent)
           --subscribeSize
           return true
@@ -122,7 +122,7 @@ internal class PooledMessageBox {
         val msgContent = message.message
         val msgList = appendMessages[group]
 
-        if (msgList != null && !msgList.contains(msgContent)) {
+        if (msgList != null && msgList.contains(msgContent)) {
           msgList.remove(msgContent)
           --subscribeSize
           return true
@@ -147,6 +147,68 @@ internal class PooledMessageBox {
    */
   fun removeMessageItems(items: Collection<SendMessage>) {
     items.forEach { removeMessage(it) }
+  }
+
+  /**
+   * Pop out subscribe messages with expected item [size]
+   */
+  fun popSubscribeMessages(size: Int): List<SendMessage> {
+    if (size <= 0) {
+      return emptyList()
+    }
+    if (subscribeSize <= size) {
+      subscribeSize = 0
+      return allSubscribeMessages().also {
+        appendMessages.clear()
+        uniqueMessages.clear()
+      }
+    }
+    val appendItems = popAppendMessages(size)
+    val uniqueItems = popUniqueMessages(size - appendItems.size)
+
+    return appendItems
+      .toMutableList()
+      .apply { addAll(uniqueItems) }
+  }
+
+  /**
+   * Pop out append messages with expected item [size]
+   */
+  private fun popAppendMessages(size: Int): List<SendMessage> {
+    if (size <= 0) {
+      return emptyList()
+    }
+    val messages = allAppendMessages()
+
+    if (messages.size <= size) {
+      appendMessages.clear()
+      subscribeSize -= messages.size
+      return messages
+    }
+    val editMessages = messages.subList(0, size)
+    return editMessages.also {
+      removeMessageItems(it)
+    }
+  }
+
+  /**
+   * Pop out unique messages with expected item [size]
+   */
+  private fun popUniqueMessages(size: Int): List<SendMessage> {
+    if (size <= 0) {
+      return emptyList()
+    }
+    val messages = allUniqueMessages()
+
+    if (messages.size <= size) {
+      uniqueMessages.clear()
+      subscribeSize -= messages.size
+      return messages
+    }
+    val editMessages = messages.subList(0, size)
+    return editMessages.also {
+      removeMessageItems(it)
+    }
   }
 
   /**
@@ -207,6 +269,30 @@ internal class PooledMessageBox {
   }
 
   /**
+   * Returns all append messages of current message box
+   */
+  private fun allAppendMessages(): List<SendMessage> {
+    val messages = mutableListOf<SendMessage>()
+
+    for ((group, msgList) in appendMessages) {
+      messages.addAll(msgList.map { AppendMessage(it, group) })
+    }
+    return messages
+  }
+
+  /**
+   * Returns all unique messages of current message box
+   */
+  private fun allUniqueMessages(): List<SendMessage> {
+    val messages = mutableListOf<SendMessage>()
+
+    for ((group, msgContent) in uniqueMessages) {
+      messages.add(ReplaceMessage(msgContent, group))
+    }
+    return messages
+  }
+
+  /**
    * Returns all queue messages of current message box
    */
   fun allQueueMessages(): List<SendMessage> {
@@ -219,6 +305,13 @@ internal class PooledMessageBox {
   fun reset() {
     appendMessages.clear()
     uniqueMessages.clear()
+    queueMessages.clear()
+  }
+
+  /**
+   * Clear queue messages
+   */
+  fun clearQueueMessages() {
     queueMessages.clear()
   }
 

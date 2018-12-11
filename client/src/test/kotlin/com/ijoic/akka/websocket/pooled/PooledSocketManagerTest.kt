@@ -17,10 +17,13 @@
  */
 package com.ijoic.akka.websocket.pooled
 
+import akka.actor.AbstractActor
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.testkit.javadsl.TestKit
 import com.ijoic.akka.websocket.client.SocketManager
+import com.ijoic.akka.websocket.message.AppendMessage
+import com.ijoic.akka.websocket.message.BatchSendMessage
 import com.ijoic.akka.websocket.message.QueueMessage
 import com.ijoic.akka.websocket.state.SocketState
 import org.junit.AfterClass
@@ -40,13 +43,7 @@ class PooledSocketManagerTest {
     val m0 = TestKit(system)
     val m1 = TestKit(system)
 
-    val manager = system!!.actorOf(PooledSocketManager.props(receiver.ref, { _, _, id ->
-      if (id == 0) {
-        m0.ref
-      } else {
-        m1.ref
-      }
-    }))
+    val manager = managerOf(receiver, listOf(m0, m1))
 
     manager.tell(QueueMessage("Hello world!"), ActorRef.noSender())
 
@@ -61,6 +58,93 @@ class PooledSocketManagerTest {
     // deploy subscribe message
     m0.expectMsgClass(QueueMessage::class.java).also {
       assert(it.message == "Hello world!")
+    }
+  }
+
+  @Test
+  fun testConnectBatchOverflow() {
+    val receiver = TestKit(system)
+
+    val m0 = TestKit(system)
+    val m1 = TestKit(system)
+    val m2 = TestKit(system)
+
+    val manager = managerOf(receiver, listOf(m0, m1, m2), PooledConfig(
+      initConnectionSize = 2,
+      idleConnectionSize = 0,
+      initSubscribe = 1
+    ))
+
+    manager.tell(
+      BatchSendMessage(
+        items = listOf(
+          AppendMessage("h1", "test"),
+          AppendMessage("h2", "test"),
+          AppendMessage("h3", "test")
+        )
+      ),
+      ActorRef.noSender()
+    )
+
+    val consumedMessages = mutableListOf("h1", "h2", "h3")
+
+    // prepare connect
+    m0.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    // m0 connect ready
+    manager.tell(SocketState.CONNECTING, m0.ref)
+    manager.tell(SocketState.CONNECTED, m0.ref)
+
+    // deploy subscribe message
+    m0.expectMsgClass(AppendMessage::class.java).also {
+      assert(consumedMessages.contains(it.message))
+      consumedMessages.remove(it.message)
+    }
+
+    // m1 connect ready
+    manager.tell(SocketState.CONNECTING, m1.ref)
+    manager.tell(SocketState.CONNECTED, m1.ref)
+
+    // deploy subscribe message
+    m1.expectMsgClass(AppendMessage::class.java).also {
+      assert(consumedMessages.contains(it.message))
+      consumedMessages.remove(it.message)
+    }
+
+    // m2 connect ready
+    manager.tell(SocketState.CONNECTING, m2.ref)
+    manager.tell(SocketState.CONNECTED, m2.ref)
+
+    // deploy subscribe message
+    m2.expectMsgClass(AppendMessage::class.java).also {
+      assert(consumedMessages.contains(it.message))
+      consumedMessages.remove(it.message)
+    }
+  }
+
+  /**
+   * Returns pooled socket manager instance with [requester], [probes] and [config]
+   */
+  private fun managerOf(requester: TestKit, probes: List<TestKit>, config: PooledConfig? = null): ActorRef {
+    return system!!.actorOf(
+      PooledSocketManager.props(
+        requester.ref,
+        ListManagerProvider(
+          probes.map { it.ref }
+        ),
+        config
+      )
+    )
+  }
+
+  /**
+   * List manager provider
+   */
+  private class ListManagerProvider(private val items: List<ActorRef>): (AbstractActor.ActorContext, ActorRef, Int) -> ActorRef {
+    override fun invoke(context: AbstractActor.ActorContext, ref: ActorRef, id: Int): ActorRef {
+      return items.getOrNull(id) ?: items.last()
     }
   }
 

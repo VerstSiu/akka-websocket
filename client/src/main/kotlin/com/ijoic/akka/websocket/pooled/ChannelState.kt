@@ -35,4 +35,17 @@ internal class ChannelState(val ref: ActorRef) {
    * Messages
    */
   val messages = PooledMessageBox()
+
+  /**
+   * Subscribe initialized status
+   */
+  var isSubscribeInitialized = false
+    private set
+
+  /**
+   * Notify subscribe initialized
+   */
+  fun notifySubscribeInitialized() {
+    isSubscribeInitialized = true
+  }
 }

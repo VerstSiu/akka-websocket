@@ -76,3 +76,14 @@ data class QueueMessage(val message: Serializable): SendMessage(), Serializable 
  * Batch send message
  */
 data class BatchSendMessage(val items: List<SendMessage>): MetricsMessage()
+
+/**
+ * Wrap current message items as batch or single send message automatically
+ */
+internal fun List<SendMessage>.autoBatch(): MetricsMessage {
+  return if (this.size == 1) {
+    this[0]
+  } else {
+    BatchSendMessage(this)
+  }
+}

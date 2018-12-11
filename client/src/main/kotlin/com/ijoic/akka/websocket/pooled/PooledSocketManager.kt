@@ -27,6 +27,7 @@ import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.client.SocketMessage
 import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.state.SocketState
+import com.ijoic.akka.websocket.util.ceilDivided
 import com.ijoic.metrics.statReceived
 
 /**
@@ -56,7 +57,9 @@ class PooledSocketManager(
       }
       childManagers.isEmpty() -> {
         idleMessages.addMessageItems(event.items)
-        prepareChildManagers(config.initConnectionSize)
+        prepareChildManagers(
+          Math.max(idleMessages.requiredConnectionSize, config.initConnectionSize)
+        )
       }
       else -> {
         val activeChannels = genActiveChannels()
@@ -176,7 +179,10 @@ class PooledSocketManager(
     childManagers.forEach { it.tell(SocketManager.RequestConnect(), self) }
     isConnectionActive = true
 
-    val prepareSize = config.initConnectionSize - childManagers.size
+    val prepareSize = Math.max(
+      idleMessages.requiredConnectionSize,
+      config.initConnectionSize - childManagers.size
+    )
     prepareChildManagers(prepareSize)
   }
 
@@ -283,7 +289,7 @@ class PooledSocketManager(
     if (childSize <= 0) {
       return
     }
-    repeat(childSize) {
+    repeat(childSize + config.idleConnectionSize) {
       val child = createManager(context, self, genChildIndex)
       ++genChildIndex
 
@@ -313,6 +319,30 @@ class PooledSocketManager(
   }
 
   private fun balanceChannelMessages(child: ActorRef) {
+    val channel = channelsMap[child] ?: return
+
+    if (!channel.isSubscribeInitialized) {
+      channel.notifySubscribeInitialized()
+      val subscribeMessages = idleMessages.popSubscribeMessages(config.initSubscribe)
+      val queueMessages = idleMessages.allQueueMessages()
+      idleMessages.clearQueueMessages()
+
+      // subscribe messages
+      if (!subscribeMessages.isEmpty()) {
+        child.tell(subscribeMessages.autoBatch(), self)
+        activeMessages.addMessageItems(subscribeMessages)
+      }
+
+      // queue messages
+      if (!queueMessages.isEmpty()) {
+        child.tell(queueMessages.autoBatch(), self)
+      }
+    } else {
+      balanceIdleMessages(child)
+    }
+  }
+
+  private fun balanceIdleMessages(child: ActorRef) {
     // TODO adjust balance strategy
     val activeChannels = genActiveChannels()
     val channelSize = activeChannels.size
@@ -325,13 +355,13 @@ class PooledSocketManager(
     idleMessages.reset()
 
     // subscribe messages
-    balanceAddSubscribeMessages(activeChannels, subscribeMessages)
+    if (!subscribeMessages.isEmpty()) {
+      balanceAddSubscribeMessages(activeChannels, subscribeMessages)
+    }
 
     // queue messages
-    if (queueMessages.size == 1) {
-      child.tell(queueMessages[0], self)
-    } else {
-      child.tell(BatchSendMessage(queueMessages), self)
+    if (!queueMessages.isEmpty()) {
+      child.tell(queueMessages.autoBatch(), self)
     }
   }
 
@@ -368,6 +398,12 @@ class PooledSocketManager(
       .filter { (_, stat) -> stat.state == SocketState.CONNECTED }
       .map { (_, stat) -> stat }
   }
+
+  /**
+   * Required connection size
+   */
+  private val PooledMessageBox.requiredConnectionSize: Int
+    get() = subscribeSize.ceilDivided(config.initSubscribe)
 
   companion object {
     /**
