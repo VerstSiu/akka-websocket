@@ -426,10 +426,17 @@ class SocketManager(
         editStatus.state = SocketState.DISCONNECTING
         editStatus.messages = MessageBoxImpl.blank
         context.become(waitingForReplies(editStatus, status))
-        client.disconnect()
+
+        status.messages.allMessagesUnsubscribe().forEach {
+          client.send(it)
+        }
       }
       else -> {
-        editStatus.messages = MessageBoxImpl.blank
+        editStatus.messages = status.messages
+          .edit()
+          .apply { clearSubscribeMessages() }
+          .commit()
+
         context.become(waitingForReplies(editStatus, status))
       }
     }

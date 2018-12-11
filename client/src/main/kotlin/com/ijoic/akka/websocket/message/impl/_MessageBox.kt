@@ -38,11 +38,31 @@ internal fun MessageBox.allMessages(): List<Serializable> {
   val messages = mutableListOf<Serializable>()
 
   for ((_, messageSet) in appendMessages) {
-    messages.addAll(messageSet)
+    messages.addAll(messageSet.map { it.subscribe })
   }
 
   for ((_, message) in uniqueMessages) {
-    messages.add(message)
+    messages.add(message.subscribe)
+  }
+
+  messages.addAll(queueMessages)
+  return messages
+}
+
+/**
+ * Returns all messages unsubscribe of message box
+ *
+ * @author verstsiu created at 2018-11-26 12:37
+ */
+internal fun MessageBox.allMessagesUnsubscribe(): List<Serializable> {
+  val messages = mutableListOf<Serializable>()
+
+  for ((_, messageSet) in appendMessages) {
+    messages.addAll(messageSet.map { it.unsubscribe })
+  }
+
+  for ((_, message) in uniqueMessages) {
+    messages.add(message.unsubscribe)
   }
 
   messages.addAll(queueMessages)
@@ -59,43 +79,3 @@ internal fun MessageBox.measureSubscribeMessageSize(): Int {
 
   return appendMessageSize + uniqueMessages.size
 }
-
-/* -- contains message :begin -- */
-
-/**
- * Returns [msg] contains status
- */
-internal fun MessageBox.containsMessage(msg: AppendMessage): Boolean {
-  val items = appendMessages[msg.info.group]
-
-  return items != null && items.contains(msg.info.subscribe)
-}
-
-/**
- * Returns [msg] contains status
- */
-internal fun MessageBox.containsMessage(msg: ReplaceMessage): Boolean {
-  val item = uniqueMessages[msg.info.group]
-
-  return item != null && item == msg.info.subscribe
-}
-
-/**
- * Returns reverse [msg] contains status
- */
-internal fun MessageBox.containsReverseMessage(msg: ClearAppendMessage): Boolean {
-  val items = appendMessages[msg.info.group]
-
-  return items != null && items.contains(msg.info.unsubscribe)
-}
-
-/**
- * Returns reverse [msg] contains status
- */
-internal fun MessageBox.containsReverseMessage(msg: ClearReplaceMessage): Boolean {
-  val items = appendMessages[msg.info.group]
-
-  return items != null
-}
-
-/* -- contains message :end -- */

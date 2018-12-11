@@ -36,6 +36,11 @@ internal interface MutableMessageBox: MessageBox {
   fun queue(message: Serializable): Boolean
 
   /**
+   * Clear subscribe messages
+   */
+  fun clearSubscribeMessages()
+
+  /**
    * Clear queue message list
    */
   fun clearQueueMessages()

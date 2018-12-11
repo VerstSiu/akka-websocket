@@ -163,6 +163,20 @@ internal class MutableMessageBoxImpl(
     return true
   }
 
+  override fun clearSubscribeMessages() {
+    val appendMessages = this.appendMessages
+    val uniqueMessages = this.uniqueMessages
+
+    if (!appendMessages.isEmpty()) {
+      ++editCount
+      _appendMessages = mutableMapOf()
+    }
+    if (!uniqueMessages.isEmpty()) {
+      ++editCount
+      _uniqueMessages = mutableMapOf()
+    }
+  }
+
   override fun clearQueueMessages() {
     val oldMessages = src.queueMessages
 
