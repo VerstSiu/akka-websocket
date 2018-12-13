@@ -33,7 +33,7 @@ internal class MessageBox {
   /**
    * Unique messages (group - unique item)
    */
-  private val uniqueMessages: MutableMap<String, SubscribeInfo> = mutableMapOf()
+  private val uniqueMessages: MutableMap<String, ReplaceMessage> = mutableMapOf()
 
   /**
    * Queue messages (items)
@@ -69,11 +69,11 @@ internal class MessageBox {
         val group = info.group
         val msgOld = uniqueMessages[group]
 
-        if (msgOld?.subscribe != info.subscribe) {
+        if (msgOld?.info?.subscribe != info.subscribe) {
           if (msgOld == null) {
             ++subscribeSize
           }
-          uniqueMessages[group] = info
+          uniqueMessages[group] = message
           return true
         }
       }
@@ -97,7 +97,7 @@ internal class MessageBox {
         val group = info.group
         val msgOld = uniqueMessages[group]
 
-        if (msgOld != null) {
+        if (msgOld != null && (!message.strict || msgOld.info.subscribe == info.subscribe)) {
           --subscribeSize
           uniqueMessages.remove(group)
           return true
@@ -241,7 +241,7 @@ internal class MessageBox {
     val group = info.group
     val msgOld = uniqueMessages[group]
 
-    return msgOld?.subscribe == info.subscribe
+    return msgOld?.info?.subscribe == info.subscribe
   }
 
   /**
@@ -263,7 +263,7 @@ internal class MessageBox {
     val group = info.group
     val msgOld = uniqueMessages[group]
 
-    return msgOld != null
+    return msgOld != null && (!message.strict || msgOld.info.subscribe == info.subscribe)
   }
 
   /**
@@ -305,8 +305,8 @@ internal class MessageBox {
   private fun allUniqueMessages(): List<SendMessage> {
     val messages = mutableListOf<SendMessage>()
 
-    for ((_, info) in uniqueMessages) {
-      messages.add(ReplaceMessage(info))
+    for ((_, message) in uniqueMessages) {
+      messages.add(message)
     }
     return messages
   }

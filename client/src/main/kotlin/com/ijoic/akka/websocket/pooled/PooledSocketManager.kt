@@ -387,7 +387,7 @@ class PooledSocketManager(
             .mapNotNull {
               when (it) {
                 is AppendMessage -> ClearAppendMessage(it.info)
-                is ReplaceMessage -> ClearReplaceMessage(it.info)
+                is ReplaceMessage -> ClearReplaceMessage(it.info, it.strict)
                 else -> null
               }
             }

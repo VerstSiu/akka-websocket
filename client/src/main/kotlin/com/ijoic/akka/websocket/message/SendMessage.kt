@@ -50,8 +50,10 @@ data class AppendMessage(override val info: SubscribeInfo): SubscribeMessage(), 
 
 /**
  * Replace message
+ *
+ * Clear replace would only match subscribe equals when [strict] == true
  */
-data class ReplaceMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
+data class ReplaceMessage(override val info: SubscribeInfo, val strict: Boolean = false): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -68,8 +70,10 @@ data class ClearAppendMessage(override val info: SubscribeInfo): SubscribeMessag
 
 /**
  * Clear replace message
+ *
+ * Clear replace would only match subscribe equals when [strict] == true
  */
-data class ClearReplaceMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
+data class ClearReplaceMessage(override val info: SubscribeInfo, val strict: Boolean = false): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
