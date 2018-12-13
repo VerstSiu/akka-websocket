@@ -18,6 +18,7 @@
 package com.ijoic.akka.websocket.pooled
 
 import akka.actor.ActorRef
+import com.ijoic.akka.websocket.message.MessageBox
 import com.ijoic.akka.websocket.state.SocketState
 
 /**
@@ -34,7 +35,7 @@ internal class ChannelState(val ref: ActorRef) {
   /**
    * Messages
    */
-  val messages = PooledMessageBox()
+  val messages = MessageBox()
 
   /**
    * Subscribe initialized status

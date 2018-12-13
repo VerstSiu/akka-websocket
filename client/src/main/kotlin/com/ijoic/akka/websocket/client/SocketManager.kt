@@ -19,14 +19,8 @@ package com.ijoic.akka.websocket.client
 
 import akka.actor.*
 import com.ijoic.akka.websocket.message.*
-import com.ijoic.akka.websocket.message.impl.*
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
-import com.ijoic.akka.websocket.state.ClientState
-import com.ijoic.akka.websocket.state.MutableClientState
 import com.ijoic.akka.websocket.state.SocketState
-import com.ijoic.akka.websocket.state.impl.ClientStateImpl
-import com.ijoic.akka.websocket.state.impl.clearRetryStatus
-import com.ijoic.akka.websocket.state.impl.edit
 import com.ijoic.metrics.MetricsMessage
 import com.ijoic.metrics.statReceived
 import com.ijoic.metrics.statSend
@@ -53,6 +47,26 @@ class SocketManager(
   private val retryEnabled: Boolean
   private val retryRepeat: Boolean
   private val retryIntervals: List<Duration>
+
+  /**
+   * Connection active status
+   */
+  private var isConnectionActive = true
+
+  /**
+   * Wait for connect status
+   */
+  private var waitForConnect = false
+
+  /**
+   * Active messages
+   */
+  private val activeMessages = MessageBox()
+
+  /**
+   * Idle messages
+   */
+  private val idleMessages = MessageBox()
 
   init {
     if (options is DefaultSocketOptions) {
@@ -83,426 +97,76 @@ class SocketManager(
     self.tell(message.statSend(), self)
   }
 
+  override fun preStart() {
+    isConnectionActive = true
+    state = SocketState.DISCONNECTED
+  }
+
+  override fun postStop() {
+    isConnectionActive = false
+    waitForConnect = false
+    clearRetryStatus()
+    activeMessages.reset()
+    idleMessages.reset()
+  }
+
   override fun createReceive(): Receive {
-    return waitingForReplies(ClientStateImpl.blank, null)
-  }
-
-  private fun dispatchBatchSendMessage(status: ClientState, msg: BatchSendMessage) {
-    val editStatus = status.edit()
-    val editMessages = status.messages.edit()
-
-    val editMsgItems = editMessages.dispatchMessageAll(msg.items)
-
-    dispatchSendMessage(editStatus, status, editMessages) {
-      var subscribeChanged = false
-
-      editMsgItems.forEach {
-        when (it) {
-          is AppendMessage -> if (editMessages.isChanged) {
-            subscribeChanged = true
-            client.send(it.info.subscribe)
-          }
-          is ReplaceMessage -> if (editMessages.isChanged) {
-            subscribeChanged = true
-            client.send(it.info.subscribe)
-          }
-          is ClearAppendMessage -> if (editMessages.isChanged) {
-            subscribeChanged = true
-            client.send(it.info.unsubscribe)
-          }
-          is ClearReplaceMessage -> if (editMessages.isChanged) {
-            subscribeChanged = true
-            client.send(it.info.unsubscribe)
-          }
-          is QueueMessage -> {
-            client.send(it.message)
-          }
-        }
-      }
-
-      if (subscribeChanged) {
-        context.become(waitingForReplies(editStatus, status))
-      }
-    }
-  }
-
-  private fun dispatchSendMessage(status: ClientState, msg: SendMessage) {
-    val editStatus = status.edit()
-    val editMessages = status.messages
-      .edit()
-      .apply { dispatchMessage(msg) }
-
-    dispatchSendMessage(editStatus, status, editMessages) {
-      when (msg) {
-        is AppendMessage -> if (editMessages.isChanged) {
-          context.become(waitingForReplies(editStatus, status))
-          client.send(msg.info.subscribe)
-        }
-        is ReplaceMessage -> if (editMessages.isChanged) {
-          context.become(waitingForReplies(editStatus, status))
-          client.send(msg.info.subscribe)
-        }
-        is ClearAppendMessage -> if (editMessages.isChanged) {
-          context.become(waitingForReplies(editStatus, status))
-          client.send(msg.info.unsubscribe)
-        }
-        is ClearReplaceMessage -> if (editMessages.isChanged) {
-          context.become(waitingForReplies(editStatus, status))
-          client.send(msg.info.unsubscribe)
-        }
-        is QueueMessage -> {
-          client.send(msg.message)
-        }
-      }
-    }
-  }
-
-  private fun dispatchSendMessage(
-    editStatus: MutableClientState,
-    status: ClientState,
-    editMessages: MutableMessageBox,
-    onSendMessages: () -> Unit) {
-
-    editStatus.messages = editMessages.commit()
-
-    when(status.state) {
-      SocketState.DISCONNECTED -> {
-        if (status.isConnectionActive && !editMessages.isEmpty) {
-          resetIdleDisconnectTask()
-          editStatus.waitForConnect = false
-          editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus, status))
-          client.connect(options, socketListener)
-        } else if (editMessages.isChanged) {
-          context.become(waitingForReplies(editStatus, status))
-        }
-      }
-      SocketState.CONNECTING -> {
-        resetIdleDisconnectTask()
-        editStatus.waitForConnect = false
-        context.become(waitingForReplies(editStatus, status))
-      }
-      SocketState.CONNECTED -> {
-        editStatus.waitForConnect = false
-
-        if (!status.isConnectionActive) {
-          resetIdleDisconnectTask()
-          resetPingTask()
-          editStatus.state = SocketState.DISCONNECTING
-          context.become(waitingForReplies(editStatus, status))
-          client.disconnect()
-        } else {
-          onSendMessages()
-
-          if (editMessages.subscribeMessageSize <= 0) {
-            prepareIdleDisconnectTask()
-          } else {
-            resetIdleDisconnectTask()
-          }
-        }
-      }
-      SocketState.DISCONNECTING -> {
-        if (status.isConnectionActive && !editMessages.isEmpty) {
-          editStatus.waitForConnect = true
-        }
-        context.become(waitingForReplies(editStatus, status))
-      }
-      SocketState.RETRY_CONNECTING -> {
-        if (!status.isConnectionActive) {
-          resetRetryConnectTask()
-          editStatus.waitForConnect = false
-          editStatus.state = SocketState.DISCONNECTED
-          editStatus.retryCount = 0
-          editStatus.retryPeriod = 0
-          context.become(waitingForReplies(editStatus, status))
-        } else if(editMessages.isChanged) {
-          context.become(waitingForReplies(editStatus, status))
-        }
-      }
-    }
-  }
-
-  private fun onConnectionCompleted(status: ClientState) {
-    resetPingTask()
-    resetRetryConnectTask()
-    val editStatus = status.clearRetryStatus()
-
-    when(status.state) {
-      SocketState.DISCONNECTED,
-      SocketState.CONNECTING,
-      SocketState.DISCONNECTING,
-      SocketState.RETRY_CONNECTING -> {
-        editStatus.waitForConnect = false
-        editStatus.retryCount = 0
-        editStatus.retryPeriod = 0
-
-        if (!status.isConnectionActive) {
-          editStatus.state = SocketState.DISCONNECTING
-          context.become(waitingForReplies(editStatus, status))
-          client.disconnect()
-
-        } else {
-          editStatus.state = SocketState.CONNECTED
-          editStatus.messages = status.messages
-            .edit()
-            .apply {
-              clearQueueMessages()
-            }
-            .commit()
-
-          context.become(waitingForReplies(editStatus, status))
-
-          status.messages.allMessages().forEach {
-            client.send(it)
-          }
-
-          preparePingTask()
-        }
-      }
-      SocketState.CONNECTED -> if (!status.isConnectionActive) {
-        editStatus.state = SocketState.DISCONNECTING
-        context.become(waitingForReplies(editStatus, status))
-        client.disconnect()
-      }
-    }
-
-    if (status.isConnectionActive && editStatus.messages.subscribeMessageSize <= 0) {
-      prepareIdleDisconnectTask()
-    } else {
-      resetIdleDisconnectTask()
-    }
-  }
-
-  private fun onConnectionFailure(status: ClientState) {
-    resetPingTask()
-    val editStatus = status.edit()
-
-    if (!status.isConnectionActive) {
-      resetRetryConnectTask()
-      editStatus.waitForConnect = false
-      editStatus.state = SocketState.DISCONNECTED
-      editStatus.retryCount = 0
-      editStatus.retryPeriod = 0
-      context.become(waitingForReplies(editStatus, status))
-      return
-    }
-
-    when(status.state) {
-      SocketState.DISCONNECTED -> {
-        if (status.waitForConnect) {
-          editStatus.waitForConnect = false
-          editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus, status))
-          client.connect(options, socketListener)
-        } else {
-          prepareRetryConnect(editStatus, status)
-        }
-      }
-      SocketState.CONNECTING,
-      SocketState.CONNECTED -> {
-        editStatus.waitForConnect = false
-        editStatus.state = SocketState.DISCONNECTED
-
-        if (!prepareRetryConnect(editStatus, status)) {
-          context.become(waitingForReplies(editStatus, status))
-        }
-      }
-      SocketState.DISCONNECTING -> {
-        if (status.waitForConnect) {
-          editStatus.waitForConnect = false
-          editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus, status))
-          client.connect(options, socketListener)
-        } else {
-          editStatus.state = SocketState.DISCONNECTED
-          context.become(waitingForReplies(editStatus, status))
-        }
-      }
-      SocketState.RETRY_CONNECTING -> {
-        prepareRetryConnect(editStatus, status)
-      }
-    }
-  }
-
-  private fun onConnectionClosed(status: ClientState) {
-    resetPingTask()
-    val editStatus = status.edit()
-    editStatus.waitForConnect = false
-
-    if (!status.isConnectionActive) {
-      resetRetryConnectTask()
-      editStatus.state = SocketState.DISCONNECTED
-      editStatus.retryCount = 0
-      editStatus.retryPeriod = 0
-      context.become(waitingForReplies(editStatus, status))
-      return
-    }
-
-    when(status.state) {
-      SocketState.DISCONNECTED -> {
-        prepareRetryConnect(editStatus, status)
-      }
-      SocketState.CONNECTING,
-      SocketState.CONNECTED,
-      SocketState.RETRY_CONNECTING -> {
-        editStatus.state = SocketState.DISCONNECTED
-
-        if (!prepareRetryConnect(editStatus, status)) {
-          context.become(waitingForReplies(editStatus, status))
-        }
-      }
-      SocketState.DISCONNECTING -> {
-        if (status.waitForConnect) {
-          editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus, status))
-          client.connect(options, socketListener)
-        } else {
-          editStatus.state = SocketState.DISCONNECTED
-          context.become(waitingForReplies(editStatus, status))
-        }
-      }
-    }
-  }
-
-  private fun onRequestConnect(status: ClientState) {
-    resetRetryConnectTask()
-    val editStatus = status.clearRetryStatus()
-    editStatus.isConnectionActive = true
-
-    when(status.state) {
-      SocketState.DISCONNECTED,
-      SocketState.RETRY_CONNECTING -> {
-        resetPingTask()
-        editStatus.waitForConnect = false
-        editStatus.state = SocketState.CONNECTING
-        context.become(waitingForReplies(editStatus, status))
-        client.connect(options, socketListener)
-      }
-      SocketState.CONNECTING,
-      SocketState.CONNECTED -> {
-        editStatus.waitForConnect = false
-        context.become(waitingForReplies(editStatus, status))
-      }
-      SocketState.DISCONNECTING -> {
-        resetPingTask()
-        editStatus.waitForConnect = true
-        context.become(waitingForReplies(editStatus, status))
-      }
-    }
-  }
-
-  private fun onRequestDisconnect(status: ClientState) {
-    resetRetryConnectTask()
-    resetIdleDisconnectTask()
-    resetPingTask()
-    val editStatus = status.clearRetryStatus()
-    editStatus.isConnectionActive = true
-    editStatus.waitForConnect = false
-
-    when(status.state) {
-      SocketState.DISCONNECTED,
-      SocketState.CONNECTING,
-      SocketState.DISCONNECTING -> {
-        context.become(waitingForReplies(editStatus, status))
-      }
-      SocketState.CONNECTED -> {
-        editStatus.state = SocketState.DISCONNECTING
-        context.become(waitingForReplies(editStatus, status))
-        client.disconnect()
-      }
-      SocketState.RETRY_CONNECTING -> {
-        editStatus.state = SocketState.DISCONNECTED
-        context.become(waitingForReplies(editStatus, status))
-      }
-    }
-  }
-
-  private fun onRequestClearSubscribe(status: ClientState) {
-    val editStatus = status.clearRetryStatus()
-
-    when(status.state) {
-      SocketState.CONNECTED -> {
-        editStatus.waitForConnect = status.isConnectionActive
-        editStatus.state = SocketState.DISCONNECTING
-        editStatus.messages = MessageBoxImpl.blank
-        context.become(waitingForReplies(editStatus, status))
-
-        status.messages.allMessagesUnsubscribe().forEach {
-          client.send(it)
-        }
-      }
-      else -> {
-        editStatus.messages = status.messages
-          .edit()
-          .apply { clearSubscribeMessages() }
-          .commit()
-
-        context.become(waitingForReplies(editStatus, status))
-      }
-    }
-  }
-
-  private fun waitingForReplies(status: ClientState, oldStatus: ClientState?): Receive {
-    if (oldStatus != null && oldStatus.state != status.state) {
-      requester.tell(status.state, self)
-    }
-
     return receiveBuilder()
       .match(BatchSendMessage::class.java) {
         it.statReceived()
-        dispatchBatchSendMessage(status, it)
+        dispatchBatchSendMessage(it)
       }
       .match(SendMessage::class.java) {
         it.statReceived()
-        dispatchSendMessage(status, it)
+        dispatchSendMessage(it)
       }
       .match(SocketMessage::class.java) {
         it.statReceived()
         requester.tell(it.statSend(), self)
 
-        when(it) {
-          is ConnectionCompleted -> onConnectionCompleted(status)
-          is ConnectionFailure -> onConnectionFailure(status)
-          is ConnectionClosed -> onConnectionClosed(status)
+        if (!isConnectionActive) {
+          checkAndCloseConnection()
+        } else {
+          when (it) {
+            is ConnectionCompleted -> onConnectionCompleted()
+            is ConnectionFailure -> onConnectionFailure()
+            is ConnectionClosed -> onConnectionClosed()
+          }
         }
       }
       .match(RequestConnect::class.java) {
         it.statReceived()
-        onRequestConnect(status)
+        onRequestConnect()
       }
       .match(RequestDisconnect::class.java) {
         it.statReceived()
-        onRequestDisconnect(status)
+        onRequestDisconnect()
       }
       .match(RequestClearSubscribe::class.java) {
         it.statReceived()
-        onRequestClearSubscribe(status)
+        onRequestClearSubscribe()
       }
       .match(PingMessage::class.java) {
         it.statReceived()
 
-        if (status.state == SocketState.CONNECTED) {
+        if (state == SocketState.CONNECTED) {
           client.send(pingMessage)
         }
       }
       .match(DisconnectMessage::class.java) {
         it.statReceived()
-        if (status.state == SocketState.CONNECTED) {
+        if (state == SocketState.CONNECTED) {
           resetPingTask()
-          val editStatus = status.edit()
-          editStatus.waitForConnect = false
-          editStatus.state = SocketState.DISCONNECTING
-          context.become(waitingForReplies(editStatus, status))
+          waitForConnect = false
+          updateSocketState(SocketState.DISCONNECTING)
           client.disconnect()
         }
       }
       .match(RetryConnectMessage::class.java) {
         it.statReceived()
-        if (status.state == SocketState.RETRY_CONNECTING) {
+        if (state == SocketState.RETRY_CONNECTING) {
           resetRetryConnectTask()
-          val editStatus = status.edit()
-          editStatus.state = SocketState.CONNECTING
-          context.become(waitingForReplies(editStatus, status))
+          updateSocketState(SocketState.CONNECTING)
           client.connect(options, socketListener)
         }
       }
@@ -513,6 +177,298 @@ class SocketManager(
       }
       .build()
   }
+
+  private fun dispatchBatchSendMessage(event: BatchSendMessage) {
+    dispatchMessageItems(event.items)
+  }
+
+  private fun dispatchSendMessage(msg: SendMessage) {
+    dispatchMessageItems(listOf(msg))
+  }
+
+  private fun dispatchMessageItems(items: Collection<SendMessage>) {
+    if (!isConnectionActive) {
+      idleMessages.addMessageItems(items)
+      checkAndCloseConnection()
+    } else {
+      when(state) {
+        SocketState.DISCONNECTED -> {
+          idleMessages.addMessageItems(items)
+
+          if (!idleMessages.isEmpty) {
+            prepareOpenConnection()
+          }
+        }
+        SocketState.CONNECTING -> {
+          idleMessages.addMessageItems(items)
+          resetIdleDisconnectTask()
+          waitForConnect = false
+        }
+        SocketState.CONNECTED -> {
+          waitForConnect = false
+          activeAndSendMessageItems(items)
+
+          if (activeMessages.subscribeSize == 0) {
+            prepareIdleDisconnectTask()
+          } else {
+            resetIdleDisconnectTask()
+          }
+        }
+        SocketState.DISCONNECTING -> {
+          idleMessages.addMessageItems(items)
+
+          if (!idleMessages.isEmpty) {
+            waitForConnect = true
+          }
+        }
+        SocketState.RETRY_CONNECTING -> {
+          idleMessages.addMessageItems(items)
+        }
+      }
+    }
+  }
+
+  private fun onConnectionCompleted() {
+    resetPingTask()
+    resetRetryConnectTask()
+    clearRetryStatus()
+
+    when(state) {
+      SocketState.DISCONNECTED,
+      SocketState.CONNECTING,
+      SocketState.DISCONNECTING,
+      SocketState.RETRY_CONNECTING -> {
+        waitForConnect = false
+        clearRetryStatus()
+
+        updateSocketState(SocketState.CONNECTED)
+        val items = idleMessages.allMessages()
+        idleMessages.reset()
+
+        activeAndSendMessageItems(items)
+        preparePingTask()
+      }
+      SocketState.CONNECTED -> {
+        // already connected
+        // do nothing
+      }
+    }
+
+    if (activeMessages.subscribeSize <= 0) {
+      prepareIdleDisconnectTask()
+    } else {
+      resetIdleDisconnectTask()
+    }
+  }
+
+  private fun onConnectionFailure() {
+    resetPingTask()
+
+    when(state) {
+      SocketState.DISCONNECTED -> {
+        if (waitForConnect) {
+          waitForConnect = false
+          updateSocketState(SocketState.CONNECTING)
+          client.connect(options, socketListener)
+        } else {
+          prepareRetryConnect()
+        }
+      }
+      SocketState.CONNECTING -> {
+        waitForConnect = false
+        updateSocketState(SocketState.DISCONNECTED)
+        prepareRetryConnect()
+      }
+      SocketState.CONNECTED -> {
+        waitForConnect = false
+        updateSocketState(SocketState.DISCONNECTED)
+        translateActiveMessagesToIdle()
+        prepareRetryConnect()
+      }
+      SocketState.DISCONNECTING -> {
+        if (waitForConnect) {
+          waitForConnect = false
+          updateSocketState(SocketState.CONNECTING)
+          client.connect(options, socketListener)
+        } else {
+          updateSocketState(SocketState.DISCONNECTED)
+        }
+      }
+      SocketState.RETRY_CONNECTING -> {
+        prepareRetryConnect()
+      }
+    }
+  }
+
+  private fun onConnectionClosed() {
+    resetPingTask()
+    waitForConnect = false
+
+    when(state) {
+      SocketState.DISCONNECTED -> {
+        prepareRetryConnect()
+      }
+      SocketState.CONNECTING,
+      SocketState.RETRY_CONNECTING -> {
+        updateSocketState(SocketState.DISCONNECTED)
+        prepareRetryConnect()
+      }
+      SocketState.CONNECTED -> {
+        updateSocketState(SocketState.DISCONNECTED)
+        translateActiveMessagesToIdle()
+        prepareRetryConnect()
+      }
+      SocketState.DISCONNECTING -> {
+        if (waitForConnect) {
+          updateSocketState(SocketState.CONNECTING)
+          client.connect(options, socketListener)
+        } else {
+          updateSocketState(SocketState.DISCONNECTED)
+        }
+      }
+    }
+  }
+
+  private fun onRequestConnect() {
+    resetRetryConnectTask()
+    isConnectionActive = true
+
+    when(state) {
+      SocketState.DISCONNECTED,
+      SocketState.RETRY_CONNECTING -> {
+        resetPingTask()
+        waitForConnect = false
+        updateSocketState(SocketState.CONNECTING)
+        client.connect(options, socketListener)
+      }
+      SocketState.CONNECTING,
+      SocketState.CONNECTED -> {
+        waitForConnect = false
+      }
+      SocketState.DISCONNECTING -> {
+        resetPingTask()
+        waitForConnect = true
+      }
+    }
+  }
+
+  private fun onRequestDisconnect() {
+    resetRetryConnectTask()
+    resetIdleDisconnectTask()
+    resetPingTask()
+    clearRetryStatus()
+    isConnectionActive = true
+    waitForConnect = false
+
+    when(state) {
+      SocketState.DISCONNECTED,
+      SocketState.CONNECTING,
+      SocketState.DISCONNECTING -> {
+        // do nothing
+      }
+      SocketState.CONNECTED -> {
+        updateSocketState(SocketState.DISCONNECTING)
+        translateActiveMessagesToIdle()
+        client.disconnect()
+      }
+      SocketState.RETRY_CONNECTING -> {
+        updateSocketState(SocketState.DISCONNECTED)
+      }
+    }
+  }
+
+  private fun onRequestClearSubscribe() {
+    if (!isConnectionActive) {
+      activeMessages.reset()
+      idleMessages.clearSubscribeMessages()
+      checkAndCloseConnection()
+      return
+    }
+
+    when(state) {
+      SocketState.CONNECTED -> {
+        waitForConnect = false
+
+        val items = activeMessages.allSubscribeMessages()
+        activeMessages.clearSubscribeMessages()
+
+        items
+          .mapNotNull { it as? SubscribeMessage }
+          .forEach { client.send(it.info.unsubscribe) }
+
+        prepareIdleDisconnectTask()
+      }
+      else -> {
+        activeMessages.reset()
+        idleMessages.clearSubscribeMessages()
+      }
+    }
+  }
+
+  private fun prepareOpenConnection() {
+    resetIdleDisconnectTask()
+    waitForConnect = false
+    updateSocketState(SocketState.CONNECTING)
+    client.connect(options, socketListener)
+  }
+
+  private fun checkAndCloseConnection() {
+    waitForConnect = false
+
+    when(state) {
+      SocketState.DISCONNECTED,
+      SocketState.CONNECTING,
+      SocketState.DISCONNECTING -> {
+        clearRetryStatus()
+        resetRetryConnectTask()
+      }
+      SocketState.CONNECTED -> {
+        resetPingTask()
+        resetIdleDisconnectTask()
+        updateSocketState(SocketState.DISCONNECTING)
+        translateActiveMessagesToIdle()
+        client.disconnect()
+      }
+      SocketState.RETRY_CONNECTING -> {
+        clearRetryStatus()
+        resetRetryConnectTask()
+        updateSocketState(SocketState.DISCONNECTED)
+      }
+    }
+  }
+
+  private fun activeAndSendMessageItems(items: Collection<SendMessage>) {
+    items.forEach { item ->
+      if (activeMessages.addMessage(item)) {
+        when(item) {
+          is SubscribeMessage -> client.send(item.info.subscribe)
+          is QueueMessage -> client.send(item.message)
+        }
+      }
+    }
+    activeMessages.clearQueueMessages()
+  }
+
+  private fun translateActiveMessagesToIdle() {
+    idleMessages.addMessageItems(activeMessages.allSubscribeMessages())
+    activeMessages.reset()
+  }
+
+  /* -- socket state :begin -- */
+
+  /**
+   * Socket state
+   */
+  private var state = SocketState.DISCONNECTED
+
+  private fun updateSocketState(state: SocketState) {
+    if (this.state != state) {
+      this.state = state
+      requester.tell(state, self)
+    }
+  }
+
+  /* -- socket state :end -- */
 
   /* -- ping task :begin -- */
 
@@ -559,17 +515,27 @@ class SocketManager(
 
   /* -- retry task :begin -- */
 
+  /**
+   * Retry count
+   */
+  private var retryCount = 0
+
+  /**
+   * Retry period
+   */
+  private var retryPeriod = 0
+
   private var retryTask: Cancellable? = null
 
-  private fun prepareRetryConnect(status: MutableClientState, oldStatus: ClientState): Boolean {
+  private fun prepareRetryConnect(): Boolean {
     if (!retryEnabled) {
       return false
     }
-    if (disconnectWhenIdle && status.messages.isEmpty) {
+    if (disconnectWhenIdle && idleMessages.isEmpty) {
       return false
     }
-    val oldRetryCount = status.retryCount
-    val oldRetryPeriod = status.retryPeriod
+    val oldRetryCount = retryCount
+    val oldRetryPeriod = retryPeriod
 
     var editRetryCount = oldRetryCount + 1
     var editRetryPeriod = oldRetryPeriod
@@ -584,20 +550,16 @@ class SocketManager(
     }
 
     if (editRetryPeriod > 0 && !retryRepeat) {
-      status.retryCount = 0
-      status.retryPeriod = 0
-      context.become(waitingForReplies(status, oldStatus))
+      clearRetryStatus()
     } else if (retryInterval.isZero) {
-      status.state = SocketState.CONNECTING
-      status.retryCount = editRetryCount
-      status.retryPeriod = editRetryPeriod
-      context.become(waitingForReplies(status, oldStatus))
+      updateSocketState(SocketState.CONNECTING)
+      retryCount = editRetryCount
+      retryPeriod = editRetryPeriod
       client.connect(options, socketListener)
     } else {
-      status.state = SocketState.RETRY_CONNECTING
-      status.retryCount = editRetryCount
-      status.retryPeriod = editRetryPeriod
-      context.become(waitingForReplies(status, oldStatus))
+      updateSocketState(SocketState.RETRY_CONNECTING)
+      retryCount = editRetryCount
+      retryPeriod = editRetryPeriod
 
       retryTask = context.system.scheduler
         .scheduleOnce(
@@ -607,6 +569,11 @@ class SocketManager(
         )
     }
     return true
+  }
+
+  private fun clearRetryStatus() {
+    retryCount = 0
+    retryPeriod = 0
   }
 
   private fun resetRetryConnectTask() {

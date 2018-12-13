@@ -47,8 +47,8 @@ class PooledSocketManager(
   private val childManagers = mutableListOf<ActorRef>()
   private val channelsMap = mutableMapOf<ActorRef, ChannelState>()
 
-  private val activeMessages = PooledMessageBox()
-  private val idleMessages = PooledMessageBox()
+  private val activeMessages = MessageBox()
+  private val idleMessages = MessageBox()
 
   private fun dispatchBatchSendMessage(event: BatchSendMessage) {
     when {
@@ -434,7 +434,7 @@ class PooledSocketManager(
   /**
    * Required connection size
    */
-  private val PooledMessageBox.requiredConnectionSize: Int
+  private val MessageBox.requiredConnectionSize: Int
     get() = subscribeSize.ceilDivided(config.initSubscribe)
 
   companion object {
