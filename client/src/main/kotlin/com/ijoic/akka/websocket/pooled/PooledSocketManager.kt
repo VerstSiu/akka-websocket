@@ -27,7 +27,6 @@ import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.client.SocketMessage
 import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.state.SocketState
-import com.ijoic.akka.websocket.util.ceilDivided
 import com.ijoic.metrics.statReceived
 
 /**
@@ -47,30 +46,77 @@ class PooledSocketManager(
   private val childManagers = mutableListOf<ActorRef>()
   private val channelsMap = mutableMapOf<ActorRef, ChannelState>()
 
-  private val activeMessages = MessageBox()
-  private val idleMessages = MessageBox()
+  private val allMessages = PooledMessageCache()
+  private val idleMessages = PooledMessageCache()
 
   private fun dispatchBatchSendMessage(event: BatchSendMessage) {
-    when {
-      !isConnectionActive -> {
-        idleMessages.addMessageItems(event.items)
-      }
-      childManagers.isEmpty() -> {
-        idleMessages.addMessageItems(event.items)
-        prepareChildManagers(
-          Math.max(idleMessages.requiredConnectionSize, config.initConnectionSize)
-        )
-      }
-      else -> {
-        val activeChannels = genActiveChannels()
+    val items = event.items
 
-        if (activeChannels.isEmpty()) {
-          idleMessages.addMessageItems(event.items)
-        } else {
-          // TODO optimize batch procedure
-          event.items.forEach { dispatchSendMessageAlone(it) }
+    if (items.isEmpty()) {
+      return
+    }
+    if (items.size == 1) {
+      dispatchSendMessage(items.first())
+    } else {
+      when {
+        !isConnectionActive -> {
+          allMessages.addMessageItems(items)
+          idleMessages.addMessageItems(items)
         }
-        checkAndRestartChildConnections()
+        childManagers.isEmpty() -> {
+          allMessages.addMessageItems(items)
+          idleMessages.addMessageItems(items)
+
+          if (!idleMessages.isEmpty) {
+            prepareChildConnections(
+              Math.max(idleMessages.requiredConnectionSize(config.initSubscribe), config.initConnectionSize)
+            )
+          }
+        }
+        else -> {
+          val activeChannels = channelsMap
+            .filter { (_, stat) -> stat.state == SocketState.CONNECTED }
+            .map { (_, stat) -> stat }
+
+          if (!activeChannels.isEmpty()) {
+            allMessages.addMessageItems(items)
+            val averageSubscribeSize = allMessages.measureAverageSubscribeSize(config.maxSubscribe, activeChannels.size)
+            var assignIndex = 0
+            var assignItems: List<SendMessage>
+
+            for (channel in activeChannels) {
+              val assignSize = Math.max(
+                Math.min(averageSubscribeSize - channel.messages.subscribeSize, items.size - assignIndex),
+                0
+              )
+
+              if (assignSize > 0) {
+                assignItems = items.subList(assignIndex, assignIndex + assignSize)
+
+                channel.ref.tell(assignItems.autoBatch(), self)
+                channel.messages.addMessageItems(assignItems)
+                assignIndex += assignSize
+              }
+
+              if (assignIndex >= items.size) {
+                break
+              }
+            }
+            if (assignIndex < items.size) {
+              idleMessages.addMessageItems(items.subList(assignIndex, items.size))
+            }
+
+          } else {
+            allMessages.addMessageItems(items)
+            idleMessages.addMessageItems(items)
+
+            if (!idleMessages.isEmpty) {
+              prepareChildConnections(
+                idleMessages.requiredConnectionSize(config.initSubscribe) - childManagers.size
+              )
+            }
+          }
+        }
       }
     }
   }
@@ -78,147 +124,70 @@ class PooledSocketManager(
   private fun dispatchSendMessage(msg: SendMessage) {
     when {
       !isConnectionActive -> {
+        allMessages.addMessage(msg)
         idleMessages.addMessage(msg)
       }
       childManagers.isEmpty() -> {
+        allMessages.addMessage(msg)
         idleMessages.addMessage(msg)
-        prepareChildManagers(config.initConnectionSize)
+
+        if (!idleMessages.isEmpty) {
+          prepareChildConnections(config.initConnectionSize)
+        }
       }
       else -> {
-        dispatchSendMessageAlone(msg)
-        checkAndRestartChildConnections()
-      }
-    }
-  }
+        val activeChannels = channelsMap
+          .filter { (_, stat) -> stat.state == SocketState.CONNECTED }
+          .map { (_, stat) -> stat }
 
-  private fun dispatchSendMessageAlone(msg: SendMessage) {
-    when(msg) {
-      is AppendMessage -> if (!activeMessages.containsMessage(msg) && !idleMessages.containsMessage(msg)) {
-        dispatchAddSubscribeMessage(msg)
-      }
-      is ReplaceMessage -> if (!activeMessages.containsMessage(msg) && !idleMessages.containsMessage(msg)) {
-        dispatchAddSubscribeMessage(msg)
-      }
-      is ClearAppendMessage -> {
-        if (activeMessages.containsReverseMessage(msg)) {
-          dispatchRemoveSubscribeMessage(msg)
+        if (!activeChannels.isEmpty()) {
+          allMessages.addMessage(msg)
+          val channel = activeChannels[0]
 
-        } else if (idleMessages.containsReverseMessage(msg)) {
+          channel.dispatchIdleMessage(msg)
+        } else {
+          allMessages.addMessage(msg)
           idleMessages.addMessage(msg)
+
+          if (!idleMessages.isEmpty) {
+            prepareChildConnections(
+              idleMessages.requiredConnectionSize(config.initSubscribe) - childManagers.size
+            )
+          }
         }
-      }
-      is ClearReplaceMessage -> {
-        if (activeMessages.containsReverseMessage(msg)) {
-          dispatchRemoveSubscribeMessage(msg)
-
-        } else if (idleMessages.containsReverseMessage(msg)) {
-          idleMessages.addMessage(msg)
-        }
-      }
-      is QueueMessage -> dispatchQueueMessage(msg)
-    }
-  }
-
-  private fun dispatchAddSubscribeMessage(msg: SendMessage) {
-    val activeChannels = genActiveChannels()
-
-    if (activeChannels.isEmpty()) {
-      idleMessages.addMessage(msg)
-    } else {
-      activeMessages.addMessage(msg)
-      val channel = activeChannels.minBy { it.messages.subscribeSize }
-      channel?.apply {
-        ref.tell(msg, self)
-        messages.addMessage(msg)
-      }
-    }
-  }
-
-  private fun dispatchRemoveSubscribeMessage(msg: ClearAppendMessage) {
-    val activeChannels = genActiveChannels()
-
-    val channel = activeChannels.firstOrNull { it.messages.containsReverseMessage(msg) }
-    channel?.apply {
-      ref.tell(msg, self)
-      messages.addMessage(msg)
-    }
-    activeMessages.addMessage(msg)
-  }
-
-  private fun dispatchRemoveSubscribeMessage(msg: ClearReplaceMessage) {
-    val activeChannels = genActiveChannels()
-
-    val channel = activeChannels.firstOrNull { it.messages.containsReverseMessage(msg) }
-    channel?.apply {
-      ref.tell(msg, self)
-      messages.addMessage(msg)
-    }
-    activeMessages.addMessage(msg)
-  }
-
-  private fun dispatchQueueMessage(msg: QueueMessage) {
-    val activeChannels = genActiveChannels()
-
-    if (activeChannels.isEmpty()) {
-      idleMessages.addMessage(msg)
-    } else {
-      val channel = activeChannels.minBy { it.messages.subscribeSize }
-      channel?.ref?.tell(msg, self)
-    }
-  }
-
-  private fun checkAndRestartChildConnections() {
-    for ((child, channel) in channelsMap) {
-      if (channel.state == SocketState.DISCONNECTED) {
-        child.tell(SocketManager.RequestConnect(), self)
       }
     }
   }
 
   private fun onRequestConnect() {
-    childManagers.forEach { it.tell(SocketManager.RequestConnect(), self) }
-    isConnectionActive = true
+    if (childManagers.isEmpty()) {
+      prepareChildConnections(config.initConnectionSize)
 
-    val prepareSize = Math.max(
-      idleMessages.requiredConnectionSize,
-      config.initConnectionSize - childManagers.size
-    )
-    prepareChildManagers(prepareSize)
+    } else {
+      for ((child, channel) in channelsMap) {
+        when(channel.state) {
+          SocketState.DISCONNECTED,
+          SocketState.RETRY_CONNECTING -> {
+            // restart connection
+            channel.state = SocketState.CONNECTING
+            child.tell(SocketManager.RequestConnect(), self)
+          }
+          else -> {
+            // do nothing
+          }
+        }
+      }
+    }
+    isConnectionActive = true
   }
 
   private fun onRequestDisconnect() {
-    childManagers.forEach { it.tell(SocketManager.RequestDisconnect(), self) }
-    isConnectionActive = false
-
-    // recycle subscribe messages
     for ((child, channel) in channelsMap) {
-      val messages = channel.messages
-
-      if (messages.subscribeSize > 0) {
-        channel.messages.reset()
-        child.tell(SocketManager.RequestClearSubscribe(), self)
+      if (channel.state != SocketState.DISCONNECTED) {
+        child.tell(SocketManager.RequestDisconnect(), self)
       }
     }
-
-    idleMessages.addMessageItems(
-      activeMessages.allSubscribeMessages()
-    )
-    activeMessages.reset()
-  }
-
-  private fun onChildTerminated(child: ActorRef) {
-    if (!childManagers.contains(child)) {
-      return
-    }
-    context.unwatch(child)
-    childManagers.remove(child)
-
-    val channel = channelsMap[child]
-    channelsMap.remove(child)
-
-    if (channel != null) {
-      recycleChannelMessages(channel)
-    }
+    isConnectionActive = false
   }
 
   private fun onChildStateChanged(child: ActorRef, state: SocketState) {
@@ -232,15 +201,19 @@ class PooledSocketManager(
     channel.state = state
 
     if (!isConnectionActive) {
-      val messages = channel.messages
+      return
+    }
+    if (state == SocketState.DISCONNECTED) {
+      channel.state = SocketState.CONNECTING
 
-      if (messages.subscribeSize > 0) {
-        val subscribeMessages = messages.allSubscribeMessages()
-        messages.reset()
-
+      if (oldState == SocketState.CONNECTED) {
+        val oldMessages = channel.messages.allMessages()
+        channel.messages.reset()
         child.tell(SocketManager.RequestClearSubscribe(), self)
-        activeMessages.removeMessageItems(subscribeMessages)
-        idleMessages.addMessageItems(subscribeMessages)
+        child.tell(SocketManager.RequestConnect(), self)
+        recycleMessageItems(oldMessages)
+      } else {
+        child.tell(SocketManager.RequestConnect(), self)
       }
       return
     }
@@ -248,10 +221,37 @@ class PooledSocketManager(
       return
     }
     if (oldState == SocketState.CONNECTED) {
-      recycleChannelMessages(channel)
-      child.tell(SocketManager.RequestClearSubscribe(), self)
+      onConnectionInactive(channel)
     } else if (state == SocketState.CONNECTED) {
-      balanceChannelMessages(child)
+      val channelInitialized = channel.isSubscribeInitialized
+      assignIdleQueueMessageItems(channel)
+      onConnectionActive(channel)
+
+      if (channelInitialized) {
+        balanceConnection(channel)
+      }
+    }
+  }
+
+  private fun onChildTerminated(child: ActorRef) {
+    if (!childManagers.contains(child)) {
+      return
+    }
+    context.unwatch(child)
+    childManagers.remove(child)
+
+    val channel = channelsMap[child]
+    channelsMap.remove(child)
+
+    if (channel != null) {
+      val items = channel.messages.allMessages()
+
+      if (!items.isEmpty()) {
+        dispatchBatchSendMessage(
+          BatchSendMessage(items)
+        )
+      }
+      prepareChildConnections(1)
     }
   }
 
@@ -286,7 +286,46 @@ class PooledSocketManager(
       .build()
   }
 
-  private fun prepareChildManagers(childSize: Int) {
+  private fun recycleMessageItems(items: List<SendMessage>) {
+    dispatchBatchSendMessage(
+      BatchSendMessage(items)
+    )
+  }
+
+  private fun balanceConnection(channel: ChannelState) {
+    val activeChannels = channelsMap
+      .filter { (_, stat) -> stat.state == SocketState.CONNECTED }
+      .map { (_, stat) -> stat }
+
+    val averageSubscribeSize = allMessages.measureAverageSubscribeSize(config.maxSubscribe, activeChannels.size)
+    val balanceItems = mutableListOf<SendMessage>()
+
+    for (ch in activeChannels) {
+      if (ch != channel && ch.messages.subscribeSize > averageSubscribeSize) {
+        val editItems = ch.messages.popSubscribeMessages(ch.messages.subscribeSize - averageSubscribeSize)
+        val reverseItems = editItems.mapNotNull {
+          when(it) {
+            is AppendMessage -> ClearAppendMessage(it.info)
+            is ReplaceMessage -> ClearReplaceMessage(it.info, it.strict)
+            else -> null
+          }
+        }
+
+        ch.ref.tell(reverseItems.autoBatch(), self)
+        balanceItems.addAll(editItems)
+      }
+    }
+
+    if (!balanceItems.isEmpty()) {
+      dispatchBatchSendMessage(
+        BatchSendMessage(balanceItems)
+      )
+    }
+  }
+
+  /* -- child connections :begin -- */
+
+  private fun prepareChildConnections(childSize: Int) {
     if (childSize <= 0) {
       return
     }
@@ -297,145 +336,67 @@ class PooledSocketManager(
       child.tell(SocketManager.RequestConnect(), self)
       context.watch(child)
       childManagers.add(child)
-    }
-  }
-
-  private fun recycleChannelMessages(channel: ChannelState) {
-    val messages = channel.messages
-
-    if (messages.subscribeSize > 0) {
-      val subscribeMessages = messages.allSubscribeMessages()
-      messages.reset()
-
-      if (!subscribeMessages.isEmpty()) {
-        activeMessages.removeMessageItems(subscribeMessages)
-        val activeChannels = genActiveChannels().filter { it.ref != channel.ref }
-
-        if (activeChannels.isEmpty()) {
-          idleMessages.addMessageItems(subscribeMessages)
-        } else {
-          balanceAddSubscribeMessages(activeChannels, subscribeMessages)
-        }
+      channelsMap[child] = ChannelState(child).apply {
+        state = SocketState.CONNECTING
       }
     }
   }
 
-  private fun balanceChannelMessages(child: ActorRef) {
-    val channel = channelsMap[child] ?: return
+  private fun onConnectionActive(channel: ChannelState) {
+    val items = idleMessages.popupSubscribeMessageItems(config.initSubscribe)
 
+    if (items.isEmpty()) {
+      return
+    }
     if (!channel.isSubscribeInitialized) {
-      channel.notifySubscribeInitialized()
-      val subscribeMessages = idleMessages.popSubscribeMessages(config.initSubscribe)
-      val queueMessages = idleMessages.allQueueMessages()
-      idleMessages.clearQueueMessages()
+      val editItems = items.subList(0, Math.min(config.initSubscribe, items.size))
+      channel.ref.tell(editItems.autoBatch(), self)
+      channel.messages.addMessageItems(editItems.filter { it !is QueueMessage })
 
-      // subscribe messages
-      if (!subscribeMessages.isEmpty()) {
-        child.tell(subscribeMessages.autoBatch(), self)
-        activeMessages.addMessageItems(subscribeMessages)
-        channel.messages.addMessageItems(subscribeMessages)
-      }
-
-      // queue messages
-      if (!queueMessages.isEmpty()) {
-        child.tell(queueMessages.autoBatch(), self)
-      }
+      idleMessages.addMessageItems(
+        items
+          .toMutableList()
+          .apply { removeAll(editItems) }
+      )
     } else {
-      balanceIdleMessages(child)
+      channel.ref.tell(items.autoBatch(), self)
+      channel.messages.addMessageItems(items.filter { it !is QueueMessage })
+    }
+    channel.notifySubscribeInitialized()
+  }
+
+  private fun assignIdleQueueMessageItems(channel: ChannelState) {
+    val messages = idleMessages.popuoQueueMessageItems()
+
+    if (!messages.isEmpty()) {
+      channel.ref.tell(messages.autoBatch(), self)
     }
   }
 
-  private fun balanceIdleMessages(child: ActorRef) {
-    val activeChannels = genActiveChannels()
-    val channelSize = activeChannels.size
+  private fun onConnectionInactive(channel: ChannelState) {
+    val oldMessages = channel.messages.allMessages()
+    channel.messages.reset()
+    channel.ref.tell(SocketManager.RequestClearSubscribe(), self)
+    recycleMessageItems(oldMessages)
+  }
 
-    if (channelSize <= 0) {
+  /* -- child connections :end -- */
+
+  /* -- messages :begin -- */
+
+  private fun ChannelState.dispatchIdleMessage(it: SendMessage) {
+    if (!isSubscribeInitialized && messages.subscribeSize >= config.initSubscribe) {
       return
     }
-    val subscribeMessages = idleMessages.allSubscribeMessages()
-    val queueMessages = idleMessages.allQueueMessages()
-    idleMessages.reset()
+    ref.tell(it, self)
 
-    // subscribe messages
-    balanceAddSubscribeMessages(activeChannels, subscribeMessages)
-
-    // queue messages
-    if (!queueMessages.isEmpty()) {
-      child.tell(queueMessages.autoBatch(), self)
+    if (it !is QueueMessage) {
+      messages.addMessage(it)
     }
+    idleMessages.removeMessage(it)
   }
 
-  private fun balanceAddSubscribeMessages(channels: List<ChannelState>, messages: List<SendMessage>) {
-    val msgSize = messages.size
-    val oldMsgSize = activeMessages.subscribeSize
-    val newMsgSize = oldMsgSize + msgSize
-    val averageSize = newMsgSize.ceilDivided(channels.size)
-
-    // recycle messages from which subscribe messages overload
-    val appendMessages = messages.toMutableList()
-
-    channels.forEach { channel ->
-      val channelMsgSize = channel.messages.subscribeSize
-
-      if (channelMsgSize > averageSize) {
-        val shiftMessages = channel.messages.popSubscribeMessages(channelMsgSize - averageSize)
-        activeMessages.removeMessageItems(shiftMessages)
-        appendMessages.addAll(shiftMessages)
-
-        channel.ref.tell(
-          shiftMessages
-            .mapNotNull {
-              when (it) {
-                is AppendMessage -> ClearAppendMessage(it.info)
-                is ReplaceMessage -> ClearReplaceMessage(it.info, it.strict)
-                else -> null
-              }
-            }
-            .autoBatch(),
-          self
-        )
-      }
-    }
-
-    if (appendMessages.isEmpty()) {
-      return
-    }
-
-    // balance subscribe
-    val appendMsgSize = appendMessages.size
-    var start = 0
-    var editMsgSize: Int
-    var editMessages: List<SendMessage>
-
-    channels.forEach { channel ->
-      editMsgSize = averageSize - channel.messages.subscribeSize
-      editMsgSize = Math.min(appendMsgSize - start, editMsgSize)
-      editMsgSize = Math.max(editMsgSize, 0)
-
-      if (editMsgSize > 0) {
-        editMessages = appendMessages.subList(start, start + editMsgSize)
-        channel.messages.addMessageItems(editMessages)
-        channel.ref.tell(editMessages.autoBatch(), self)
-        start += editMsgSize
-      }
-    }
-    activeMessages.addMessageItems(appendMessages)
-  }
-
-  /**
-   * Generate active channels
-   */
-  private fun genActiveChannels(): List<ChannelState> {
-    return channelsMap
-      .filter { (_, stat) -> stat.state == SocketState.CONNECTED }
-      .map { (_, stat) -> stat }
-  }
-
-  /**
-   * Required connection size
-   */
-  private val MessageBox.requiredConnectionSize: Int
-    get() = subscribeSize.ceilDivided(config.initSubscribe)
+  /* -- messages :end -- */
 
   companion object {
     /**

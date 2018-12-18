@@ -121,7 +121,7 @@ internal class MessageBox {
   /**
    * Remove [message]
    */
-  private fun removeMessage(message: SendMessage): Boolean {
+  fun removeMessage(message: SendMessage): Boolean {
     when(message) {
       is AppendMessage -> {
         val info = message.info
@@ -146,6 +146,12 @@ internal class MessageBox {
         if (msgOld != null) {
           --subscribeSize
           uniqueMessages.remove(group)
+          return true
+        }
+      }
+      is QueueMessage -> {
+        if (queueMessages.contains(message.message)) {
+          queueMessages.remove(message.message)
           return true
         }
       }
@@ -264,6 +270,15 @@ internal class MessageBox {
     val msgOld = uniqueMessages[group]
 
     return msgOld != null && (!message.strict || msgOld.info.subscribe == info.subscribe)
+  }
+
+  /**
+   * Returns replace [group] contains status
+   */
+  fun containsReplaceGroup(group: String, strict: Boolean = false): Boolean {
+    val msgOld = uniqueMessages[group]
+
+    return msgOld != null && msgOld.strict == strict
   }
 
   /**
