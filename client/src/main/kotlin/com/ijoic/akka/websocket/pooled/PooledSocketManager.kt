@@ -47,16 +47,23 @@ class PooledSocketManager(
   private val channelsMap = mutableMapOf<ActorRef, ChannelState>()
 
   private val allMessages = PooledMessageCache()
+  private val activeMessages = PooledMessageCache()
   private val idleMessages = PooledMessageCache()
 
   private fun dispatchBatchSendMessage(event: BatchSendMessage) {
-    val items = event.items
+    dispatchMessageItems(event.items, trimRequired = true)
+  }
 
+  private fun dispatchSendMessage(msg: SendMessage) {
+    dispatchMessage(msg, trimRequired = true)
+  }
+
+  private fun dispatchMessageItems(items: List<SendMessage>, trimRequired: Boolean = false) {
     if (items.isEmpty()) {
       return
     }
     if (items.size == 1) {
-      dispatchSendMessage(items.first())
+      dispatchMessage(items.first(), trimRequired)
     } else {
       when {
         !isConnectionActive -> {
@@ -79,31 +86,37 @@ class PooledSocketManager(
             .map { (_, stat) -> stat }
 
           if (!activeChannels.isEmpty()) {
-            allMessages.addMessageItems(items)
+            val srcItems = if (trimRequired) {
+              activeMessages.trimMessageItems(items)
+            } else {
+              items
+            }
+            allMessages.addMessageItems(srcItems)
             val averageSubscribeSize = allMessages.measureAverageSubscribeSize(config.maxSubscribe, activeChannels.size)
             var assignIndex = 0
             var assignItems: List<SendMessage>
 
             for (channel in activeChannels) {
               val assignSize = Math.max(
-                Math.min(averageSubscribeSize - channel.messages.subscribeSize, items.size - assignIndex),
+                Math.min(averageSubscribeSize - channel.messages.subscribeSize, srcItems.size - assignIndex),
                 0
               )
 
               if (assignSize > 0) {
-                assignItems = items.subList(assignIndex, assignIndex + assignSize)
+                assignItems = srcItems.subList(assignIndex, assignIndex + assignSize)
 
                 channel.ref.tell(assignItems.autoBatch(), self)
                 channel.messages.addMessageItems(assignItems)
                 assignIndex += assignSize
               }
 
-              if (assignIndex >= items.size) {
+              if (assignIndex >= srcItems.size) {
                 break
               }
             }
-            if (assignIndex < items.size) {
-              idleMessages.addMessageItems(items.subList(assignIndex, items.size))
+            if (assignIndex < srcItems.size) {
+              activeMessages.addMessageItems(srcItems.subList(0, assignIndex))
+              idleMessages.addMessageItems(srcItems.subList(assignIndex, srcItems.size))
             }
 
           } else {
@@ -121,7 +134,7 @@ class PooledSocketManager(
     }
   }
 
-  private fun dispatchSendMessage(msg: SendMessage) {
+  private fun dispatchMessage(msg: SendMessage, trimRequired: Boolean = false) {
     when {
       !isConnectionActive -> {
         allMessages.addMessage(msg)
@@ -141,7 +154,11 @@ class PooledSocketManager(
           .map { (_, stat) -> stat }
 
         if (!activeChannels.isEmpty()) {
+          if (trimRequired) {
+            activeMessages.trimMessage(msg) ?: return
+          }
           allMessages.addMessage(msg)
+          activeMessages.addMessage(msg)
           val channel = activeChannels[0]
 
           channel.dispatchIdleMessage(msg)
@@ -167,6 +184,7 @@ class PooledSocketManager(
       for ((child, channel) in channelsMap) {
         when(channel.state) {
           SocketState.DISCONNECTED,
+          SocketState.DISCONNECTING,
           SocketState.RETRY_CONNECTING -> {
             // restart connection
             channel.state = SocketState.CONNECTING
@@ -183,9 +201,18 @@ class PooledSocketManager(
 
   private fun onRequestDisconnect() {
     for ((child, channel) in channelsMap) {
+      val oldMessages = channel.messages.allMessages()
+
+      if (!oldMessages.isEmpty()) {
+        child.tell(SocketManager.RequestClearSubscribe(), self)
+        activeMessages.removeMessageItems(oldMessages)
+        idleMessages.addMessageItems(oldMessages)
+      }
       if (channel.state != SocketState.DISCONNECTED) {
+        channel.state = SocketState.DISCONNECTING
         child.tell(SocketManager.RequestDisconnect(), self)
       }
+      channel.resetSubscribeInitialized()
     }
     isConnectionActive = false
   }
@@ -247,9 +274,8 @@ class PooledSocketManager(
       val items = channel.messages.allMessages()
 
       if (!items.isEmpty()) {
-        dispatchBatchSendMessage(
-          BatchSendMessage(items)
-        )
+        activeMessages.removeMessageItems(items)
+        dispatchMessageItems(items)
       }
       prepareChildConnections(1)
     }
@@ -287,9 +313,8 @@ class PooledSocketManager(
   }
 
   private fun recycleMessageItems(items: List<SendMessage>) {
-    dispatchBatchSendMessage(
-      BatchSendMessage(items)
-    )
+    activeMessages.removeMessageItems(items)
+    dispatchMessageItems(items)
   }
 
   private fun balanceConnection(channel: ChannelState) {
@@ -317,9 +342,7 @@ class PooledSocketManager(
     }
 
     if (!balanceItems.isEmpty()) {
-      dispatchBatchSendMessage(
-        BatchSendMessage(balanceItems)
-      )
+      recycleMessageItems(balanceItems)
     }
   }
 
@@ -353,6 +376,7 @@ class PooledSocketManager(
       channel.ref.tell(editItems.autoBatch(), self)
       channel.messages.addMessageItems(editItems.filter { it !is QueueMessage })
 
+      activeMessages.addMessageItems(editItems)
       idleMessages.addMessageItems(
         items
           .toMutableList()
@@ -366,9 +390,10 @@ class PooledSocketManager(
   }
 
   private fun assignIdleQueueMessageItems(channel: ChannelState) {
-    val messages = idleMessages.popuoQueueMessageItems()
+    val messages = idleMessages.popupQueueMessageItems()
 
     if (!messages.isEmpty()) {
+      activeMessages.addMessageItems(messages)
       channel.ref.tell(messages.autoBatch(), self)
     }
   }
@@ -393,6 +418,7 @@ class PooledSocketManager(
     if (it !is QueueMessage) {
       messages.addMessage(it)
     }
+    activeMessages.addMessage(it)
     idleMessages.removeMessage(it)
   }
 

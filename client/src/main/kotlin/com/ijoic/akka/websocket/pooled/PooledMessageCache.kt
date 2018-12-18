@@ -109,7 +109,7 @@ internal class PooledMessageCache {
   /**
    * Remove message [items]
    */
-  private fun removeMessageItems(items: Collection<SendMessage>) {
+  fun removeMessageItems(items: Collection<SendMessage>) {
     items.forEach(this::removeMessage)
   }
 
@@ -169,10 +169,97 @@ internal class PooledMessageCache {
   /**
    * Popup queue message items
    */
-  fun popuoQueueMessageItems(): List<SendMessage> {
+  fun popupQueueMessageItems(): List<SendMessage> {
     val messages = msgBox.allQueueMessages()
     msgBox.clearQueueMessages()
     return messages
+  }
+
+  /**
+   * Returns trimmed message items
+   */
+  fun trimMessageItems(items: List<SendMessage>): List<SendMessage> {
+    val sourceItems = TrimBox().doFinal(items)
+    val removedItems = mutableListOf<SendMessage>()
+
+    items.forEach {
+      when (it) {
+        is AppendMessage -> if (msgBox.containsMessage(it)) {
+          removedItems.add(it)
+        }
+        is ClearAppendMessage -> if (!msgBox.containsReverseMessage(it)) {
+          removedItems.add(it)
+        }
+        is ReplaceMessage -> {
+          if (it.strict) {
+            if (containsStrictMessage(it.info)) {
+              removedItems.add(it)
+            }
+          } else if (msgBox.containsMessage(it)) {
+            removedItems.add(it)
+          }
+        }
+        is ClearReplaceMessage -> {
+          if (it.strict) {
+            if (!containsStrictMessage(it.info)) {
+              removedItems.add(it)
+            }
+          } else if (!msgBox.containsReverseMessage(it)) {
+            removedItems.add(it)
+          }
+        }
+      }
+    }
+
+    return if (removedItems.isEmpty()) {
+      sourceItems
+    } else {
+      sourceItems
+        .toMutableList()
+        .apply { removeAll(removedItems) }
+    }
+  }
+
+  /**
+   * Trim [message]
+   */
+  fun trimMessage(message: SendMessage): SendMessage? {
+    when (message) {
+      is AppendMessage -> if (msgBox.containsMessage(message)) {
+        return null
+      }
+      is ClearAppendMessage -> if (!msgBox.containsReverseMessage(message)) {
+        return null
+      }
+      is ReplaceMessage -> {
+        if (message.strict) {
+          if (containsStrictMessage(message.info)) {
+            return null
+          }
+        } else if (msgBox.containsMessage(message)) {
+          return null
+        }
+      }
+      is ClearReplaceMessage -> {
+        if (message.strict) {
+          if (!containsStrictMessage(message.info)) {
+            return null
+          }
+        } else if (!msgBox.containsReverseMessage(message)) {
+          return null
+        }
+      }
+    }
+    return message
+  }
+
+  /**
+   * Returns strict message contains status
+   */
+  private fun containsStrictMessage(info: SubscribeInfo): Boolean {
+    val msgList = strictMessages[info.group]
+
+    return msgList != null && msgList.any { it.info.group == info.group && it.info.subscribe == info.subscribe }
   }
 
   /**

@@ -1611,6 +1611,199 @@ class PooledSocketManagerTest {
     m2.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h1", "h5")
   }
 
+  /* -- batch :begin -- */
+
+  @Test
+  fun testBatchEmpty() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, m1, m2)
+    manager.tellBatchMessage()
+
+    // prepare connect
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+  }
+
+  @Test
+  fun testBatchEmptyConnectionExist() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, m1, m2)
+    manager.requestConnect()
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectNoMessage()
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.tellBatchMessage()
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+  }
+
+  @Test
+  fun testBatchEmptySubscribeExist() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, m1, m2)
+    manager.tellMessage("h1".toAppend())
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectMsgClass(AppendMessage::class.java).checkMessage("h1")
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.tellBatchMessage()
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+  }
+
+  @Test
+  fun testBatchInactiveResume() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, m1, m2)
+    manager.requestDisconnect()
+
+    // prepare connect
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+
+    manager.tellBatchMessage("h1".toAppend())
+
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+
+    manager.requestConnect()
+
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectMsgClass(AppendMessage::class.java).checkMessage("h1")
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+  }
+
+  @Test
+  fun testBatchSubscribeInactiveResume() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2), PooledConfig(
+      initSubscribe = 1
+    ))
+    manager.tellBatchMessage("h1".toAppend())
+
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectMsgClass(AppendMessage::class.java).checkMessage("h1")
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.requestDisconnect()
+    m1.expectMsgClass(SocketManager.RequestClearSubscribe::class.java)
+    m1.expectMsgClass(SocketManager.RequestDisconnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestDisconnect::class.java)
+
+    manager.tellBatchMessage("h2".toAppend())
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+
+    manager.requestConnect()
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectMsgClass(AppendMessage::class.java).checkMessage("h1")
+
+    manager.notifyConnected(m2)
+    m2.expectMsgClass(AppendMessage::class.java).checkMessage("h2")
+  }
+
+  @Test
+  fun testBatchAppendDuplicated() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, m1, m2)
+    manager.tellBatchMessage(
+      "h1".toAppend(),
+      "h1".toAppend()
+    )
+
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectMsgClass(AppendMessage::class.java).checkMessage("h1")
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+  }
+
+  @Test
+  fun testBatchAppendDuplicatedSubscribeExist() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2), PooledConfig(
+      initSubscribe = 1
+    ))
+    manager.tellBatchMessage(
+      "h1".toAppend(),
+      "h2".toAppend()
+    )
+
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectMsgClass(AppendMessage::class.java).checkMessage("h1")
+
+    manager.notifyConnected(m2)
+    m2.expectMsgClass(AppendMessage::class.java).checkMessage("h2")
+
+    manager.tellBatchMessage("h1".toAppend())
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+  }
+
+  /* -- batch :end -- */
+
   /* -- test kit extensions :begin -- */
 
   /**
