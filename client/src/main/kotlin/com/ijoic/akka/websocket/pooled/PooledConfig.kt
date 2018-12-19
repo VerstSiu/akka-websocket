@@ -24,9 +24,10 @@ package com.ijoic.akka.websocket.pooled
  */
 data class PooledConfig(
   val initConnectionSize: Int = DEFAULT_INIT_CONNECTION_SIZE,
-  val idleConnectionSize: Int = DEFAULT_IDLE_CONNECTION_SIZE,
   val initSubscribe: Int = DEFAULT_INIT_SUBSCRIBE,
-  val maxSubscribe: Int = DEFAULT_MAX_SUBSCRIBE) {
+  val maxSubscribe: Int = DEFAULT_MAX_SUBSCRIBE,
+  val minIdle: Int = DEFAULT_MIN_IDLE,
+  val maxIdle: Int = DEFAULT_MAX_IDLE) {
 
   /**
    * Returns valid pooled config instance
@@ -34,16 +35,18 @@ data class PooledConfig(
   internal fun checkValid(): PooledConfig {
     return PooledConfig(
       initConnectionSize = this.initConnectionSize.takeIf { it >= 1 } ?: DEFAULT_INIT_CONNECTION_SIZE,
-      idleConnectionSize = this.idleConnectionSize.takeIf { it >= 0 } ?: DEFAULT_IDLE_CONNECTION_SIZE,
       initSubscribe = this.initSubscribe.takeIf { it >= 1 } ?: DEFAULT_INIT_SUBSCRIBE,
-      maxSubscribe = this.maxSubscribe.takeIf { it >= 1 } ?: DEFAULT_MAX_SUBSCRIBE
+      maxSubscribe = this.maxSubscribe.takeIf { it >= 1 } ?: DEFAULT_MAX_SUBSCRIBE,
+      minIdle = this.minIdle.takeIf { it >= 0 } ?: DEFAULT_MIN_IDLE,
+      maxIdle = this.maxIdle.takeIf { it >= 0 } ?: DEFAULT_MAX_IDLE
     )
   }
 
   companion object {
     private const val DEFAULT_INIT_CONNECTION_SIZE = 2
-    private const val DEFAULT_IDLE_CONNECTION_SIZE = 0
     private const val DEFAULT_INIT_SUBSCRIBE = 20
     private const val DEFAULT_MAX_SUBSCRIBE = 40
+    private const val DEFAULT_MIN_IDLE = 0
+    private const val DEFAULT_MAX_IDLE = 5
   }
 }

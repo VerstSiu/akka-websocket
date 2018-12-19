@@ -67,17 +67,19 @@ class PooledSocketManager(
     } else {
       when {
         !isConnectionActive -> {
+          // all connections must have been released
+          // and active messages cleared
           allMessages.addMessageItems(items)
           idleMessages.addMessageItems(items)
         }
         childManagers.isEmpty() -> {
+          // no any exist connections
+          // active messages empty
           allMessages.addMessageItems(items)
           idleMessages.addMessageItems(items)
 
           if (!idleMessages.isEmpty) {
-            prepareChildConnections(
-              Math.max(idleMessages.requiredConnectionSize(config.initSubscribe), config.initConnectionSize)
-            )
+            checkAndPrepareConnections()
           }
         }
         else -> {
@@ -86,6 +88,7 @@ class PooledSocketManager(
             .map { (_, stat) -> stat }
 
           if (!activeChannels.isEmpty()) {
+            // exist some of active connections
             val srcItems = if (trimRequired) {
               activeMessages.trimMessageItems(items)
             } else {
@@ -120,14 +123,11 @@ class PooledSocketManager(
             }
 
           } else {
+            // connections already under preparing
             allMessages.addMessageItems(items)
             idleMessages.addMessageItems(items)
 
-            if (!idleMessages.isEmpty) {
-              prepareChildConnections(
-                idleMessages.requiredConnectionSize(config.initSubscribe) - childManagers.size
-              )
-            }
+            checkAndPrepareConnections()
           }
         }
       }
@@ -145,7 +145,7 @@ class PooledSocketManager(
         idleMessages.addMessage(msg)
 
         if (!idleMessages.isEmpty) {
-          prepareChildConnections(config.initConnectionSize)
+          checkAndPrepareConnections()
         }
       }
       else -> {
@@ -166,11 +166,7 @@ class PooledSocketManager(
           allMessages.addMessage(msg)
           idleMessages.addMessage(msg)
 
-          if (!idleMessages.isEmpty) {
-            prepareChildConnections(
-              idleMessages.requiredConnectionSize(config.initSubscribe) - childManagers.size
-            )
-          }
+          checkAndPrepareConnections()
         }
       }
     }
@@ -178,7 +174,7 @@ class PooledSocketManager(
 
   private fun onRequestConnect() {
     if (childManagers.isEmpty()) {
-      prepareChildConnections(config.initConnectionSize)
+      prepareChildConnections(config.initConnectionSize + config.minIdle)
 
     } else {
       for ((child, channel) in channelsMap) {
@@ -277,7 +273,7 @@ class PooledSocketManager(
         activeMessages.removeMessageItems(items)
         dispatchMessageItems(items)
       }
-      prepareChildConnections(1)
+      checkAndPrepareConnections()
     }
   }
 
@@ -348,11 +344,32 @@ class PooledSocketManager(
 
   /* -- child connections :begin -- */
 
+  private fun checkAndPrepareConnections() {
+    val oldActive = childManagers.size
+    val requiredActive = Math.max(
+      allMessages.requiredConnectionSize(config.initSubscribe),
+      config.initConnectionSize
+    )
+    val minActive = requiredActive + config.minIdle
+    val maxActive = requiredActive + config.maxIdle
+
+    when {
+      oldActive < minActive -> prepareChildConnections(minActive - oldActive)
+      oldActive > maxActive -> {
+        val items = releaseChildConnections(oldActive - maxActive)
+
+        if (!items.isEmpty()) {
+          dispatchMessageItems(items)
+        }
+      }
+    }
+  }
+
   private fun prepareChildConnections(childSize: Int) {
     if (childSize <= 0) {
       return
     }
-    repeat(childSize + config.idleConnectionSize) {
+    repeat(childSize) {
       val child = createManager(context, self, genChildIndex)
       ++genChildIndex
 
@@ -363,6 +380,67 @@ class PooledSocketManager(
         state = SocketState.CONNECTING
       }
     }
+  }
+
+  private fun releaseChildConnections(childSize: Int): List<SendMessage> {
+    var releaseSize = childSize
+
+    releaseSize -= releaseNotConnectedChildConnections(releaseSize)
+    releaseSize -= releaseConnectedIdleChildConnections(releaseSize)
+
+    if (releaseSize <= 0) {
+      return emptyList()
+    }
+    // release channels with least messages
+    val recycleMessages = mutableListOf<SendMessage>()
+    val channels = channelsMap
+      .values
+      .sortedBy { it.messages.subscribeSize }
+
+    for (ch in channels) {
+      recycleMessages.addAll(ch.release())
+      --releaseSize
+
+      if (releaseSize <= 0) {
+        break
+      }
+    }
+    activeMessages.removeMessageItems(recycleMessages)
+    return recycleMessages
+  }
+
+  private fun releaseNotConnectedChildConnections(childSize: Int): Int {
+    if (childSize <= 0) {
+      return 0
+    }
+    val blankChannels = channelsMap
+      .filter { (_, channel) -> channel.state != SocketState.CONNECTED }
+      .map { (_, channel) -> channel }
+
+    if (blankChannels.size >= childSize) {
+      blankChannels.subList(0, childSize).forEach { it.release() }
+      return childSize
+    }
+    blankChannels.forEach { it.release() }
+
+    return blankChannels.size
+  }
+
+  private fun releaseConnectedIdleChildConnections(childSize: Int): Int {
+    if (childSize <= 0) {
+      return 0
+    }
+    val blankChannels = channelsMap
+      .filter { (_, channel) -> channel.state == SocketState.CONNECTED && channel.messages.subscribeSize == 0 }
+      .map { (_, channel) -> channel }
+
+    if (blankChannels.size >= childSize) {
+      blankChannels.subList(0, childSize).forEach { it.release() }
+      return childSize
+    }
+    blankChannels.forEach { it.release() }
+
+    return blankChannels.size
   }
 
   private fun onConnectionActive(channel: ChannelState) {
@@ -420,6 +498,15 @@ class PooledSocketManager(
     }
     activeMessages.addMessage(it)
     idleMessages.removeMessage(it)
+  }
+
+  private fun ChannelState.release(): List<SendMessage> {
+    val msgItems = this.messages.allMessages()
+    childManagers.remove(ref)
+    channelsMap.remove(ref)
+    context.stop(ref)
+
+    return msgItems
   }
 
   /* -- messages :end -- */

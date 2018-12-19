@@ -65,46 +65,18 @@ import org.junit.Test
  * RequestDisconnect
  * Terminated
  *
- * Abbreviations:
+ * Scenarios:
  *
- * Single            > S
- * Batch             > B
- * SocketState       > St
- * RequestConnect    > Rc
- * RequestDisconnect > Rd
- * Terminated        > T
+ * Send (prepare connection) > Connected (dispatch inactive messages) > Not Connected (recycle active messages)
  *
- * Combination cases:
- *
- * S
- * B
- * St
- * Rc
- * Rd
- * T
- *
- * S S
- * S B
- * S St
- * S Rc
- * S Rd
- * S T
- *
- * B S
- * B B
- * B St
- * B Rc
- * B Rd
- * B T
+ * RequestConnect (prepare connection) > Connected (wait messages) > Send (dispatch messages) > Not Connected (recycle messages)
  *
  * @author verstsiu created at 2018-12-10 22:06
  */
 class PooledSocketManagerTest {
 
-  /* -- single step test cases :begin -- */
-
   @Test
-  fun testS1SingleAppend() {
+  fun testPrepareConnectionSend() {
     val receiver = probeOf()
 
     val m1 = probeOf()
@@ -117,6 +89,113 @@ class PooledSocketManagerTest {
     m1.expectMsgClass(SocketManager.RequestConnect::class.java)
     m2.expectMsgClass(SocketManager.RequestConnect::class.java)
   }
+
+  @Test
+  fun testPrepareConnectionExtendAppend() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3), PooledConfig(
+      initSubscribe = 1
+    ))
+    manager.tellBatchMessage(
+      "h1".toAppend(),
+      "h2".toAppend(),
+      "h3".toAppend()
+    )
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+  }
+
+  @Test
+  fun testPrepareConnectionExtendStrict() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3), PooledConfig(
+      initSubscribe = 2
+    ))
+    manager.tellBatchMessage(
+      "h1".toStrict(),
+      "h2".toStrict(),
+      "h3".toStrict()
+    )
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+  }
+
+  @Test
+  fun testPrepareConnectionExtendStrictMinus() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+    val m4 = probeOf()
+    val m5 = probeOf()
+
+    receiver.watch(m1.ref)
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3, m4, m5), PooledConfig(
+      initSubscribe = 2,
+      maxIdle = 2
+    ))
+    manager.tellBatchMessage(
+      "h1".toStrict(),
+      "h2".toStrict(),
+      "h3".toStrict(),
+      "h4".toStrict(),
+      "h5".toStrict()
+    )
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m4.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m5.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.tellBatchMessage(
+      "h3".toClearStrict(),
+      "h4".toClearStrict(),
+      "h5".toClearStrict()
+    )
+
+    receiver.expectTerminated(m1.ref)
+    m2.expectNoMessage()
+    m3.expectNoMessage()
+    m4.expectNoMessage()
+    m5.expectNoMessage()
+  }
+
+  @Test
+  fun testPrepareConnectionRequestConnect() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+
+    val manager = managerOf(receiver, m1, m2)
+    manager.requestConnect()
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+  }
+
+  /* -- single step test cases :begin -- */
 
   @Test
   fun testS1SingleClearAppend() {
@@ -415,58 +494,6 @@ class PooledSocketManagerTest {
   }
 
   @Test
-  fun testS1BatchAppendConnectionExtend() {
-    val receiver = probeOf()
-
-    val m1 = probeOf()
-    val m2 = probeOf()
-    val m3 = probeOf()
-
-    val manager = managerOf(receiver, listOf(m1, m2, m3), PooledConfig(
-      initSubscribe = 2
-    ))
-    manager.tellBatchMessage(
-      "h1".toAppend(),
-      "h2".toAppend(),
-      "h3".toAppend(),
-      "h4".toAppend(),
-      "h5".toAppend(),
-      "h6".toAppend()
-    )
-
-    // prepare connect
-    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
-    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
-    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
-  }
-
-  @Test
-  fun testS1BatchStrictConnectionExtend() {
-    val receiver = probeOf()
-
-    val m1 = probeOf()
-    val m2 = probeOf()
-    val m3 = probeOf()
-    val m4 = probeOf()
-
-    val manager = managerOf(receiver, listOf(m1, m2, m3, m4), PooledConfig(
-      initSubscribe = 2
-    ))
-    manager.tellBatchMessage(
-      "h1".toStrict(),
-      "h2".toStrict(),
-      "h3".toStrict(),
-      "h4".toStrict()
-    )
-
-    // prepare connect
-    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
-    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
-    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
-    m4.expectMsgClass(SocketManager.RequestConnect::class.java)
-  }
-
-  @Test
   fun testS1StateDisconnected() {
     val receiver = probeOf()
 
@@ -539,21 +566,6 @@ class PooledSocketManagerTest {
     // prepare connect
     m1.expectNoMessage()
     m2.expectNoMessage()
-  }
-
-  @Test
-  fun testS1Connect() {
-    val receiver = probeOf()
-
-    val m1 = probeOf()
-    val m2 = probeOf()
-
-    val manager = managerOf(receiver, m1, m2)
-    manager.requestConnect()
-
-    // prepare connect
-    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
-    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
   }
 
   @Test
