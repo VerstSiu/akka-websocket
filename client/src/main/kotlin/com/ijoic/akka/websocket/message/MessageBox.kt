@@ -162,7 +162,7 @@ internal class MessageBox {
   /**
    * Remove message [items]
    */
-  fun removeMessageItems(items: Collection<SendMessage>) {
+  private fun removeMessageItems(items: Collection<SendMessage>) {
     items.forEach { removeMessage(it) }
   }
 
@@ -251,10 +251,9 @@ internal class MessageBox {
   }
 
   /**
-   * Returns reverse [message] contains status
+   * Returns reverse append message contains status
    */
-  fun containsReverseMessage(message: ClearAppendMessage): Boolean {
-    val info = message.info
+  fun containsReverseAppendMessage(info: SubscribeInfo): Boolean {
     val group = info.group
     val msgList = appendMessages[group]
 
@@ -262,23 +261,32 @@ internal class MessageBox {
   }
 
   /**
-   * Returns reverse [message] contains status
+   * Returns reverse replace message contains status
    */
-  fun containsReverseMessage(message: ClearReplaceMessage): Boolean {
-    val info = message.info
+  fun containsReverseReplaceMessage(info: SubscribeInfo): Boolean {
     val group = info.group
     val msgOld = uniqueMessages[group]
 
-    return msgOld != null && (!message.strict || msgOld.info.subscribe == info.subscribe)
+    return msgOld != null && !msgOld.strict
   }
 
   /**
-   * Returns replace [group] contains status
+   * Returns reverse strict message contains status
    */
-  fun containsReplaceGroup(group: String, strict: Boolean = false): Boolean {
+  fun containsReverseStrictMessage(info: SubscribeInfo): Boolean {
+    val group = info.group
     val msgOld = uniqueMessages[group]
 
-    return msgOld != null && msgOld.strict == strict
+    return msgOld != null && msgOld.strict && msgOld.info.subscribe == info.subscribe
+  }
+
+  /**
+   * Returns strict [group] contains status
+   */
+  fun containsStrictGroup(group: String): Boolean {
+    val msgOld = uniqueMessages[group]
+
+    return msgOld != null && msgOld.strict
   }
 
   /**

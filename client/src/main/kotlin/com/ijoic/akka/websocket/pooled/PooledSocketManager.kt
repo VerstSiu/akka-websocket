@@ -94,6 +94,67 @@ class PooledSocketManager(
             } else {
               items
             }
+            val strictItems = srcItems.filter { it is ReplaceMessage && it.strict }
+            val replaceItems = srcItems.filter { it is ReplaceMessage && !it.strict }
+            val appendItems = srcItems.filter { it is AppendMessage || (it is ReplaceMessage && !it.strict) }
+            val unsubscribeItems = srcItems.filter { it is ClearAppendMessage || it is ClearReplaceMessage }
+            val queueItems = srcItems.filter { it is QueueMessage }
+
+            // clear append/replace/strict items
+            unsubscribeItems.forEach {
+              var oldChannel: ChannelState? = null
+
+              when(it) {
+                is ClearAppendMessage -> {
+                  oldChannel = activeChannels.reverseAppend(it.info)
+                }
+                is ClearReplaceMessage -> {
+                  oldChannel = if (it.strict) {
+                    activeChannels.reverseStrict(it.info)
+                  } else {
+                    activeChannels.reverseReplace(it.info)
+                  }
+                }
+              }
+
+              if (oldChannel != null) {
+                activeMessages.addMessage(it)
+                oldChannel.ref.tell(it, self)
+                oldChannel.messages.addMessage(it)
+              } else {
+                idleMessages.addMessage(it)
+              }
+            }
+
+            // strict items
+            strictItems.forEach {
+              it as ReplaceMessage
+              val channel = activeChannels.minSubscribeStrictEmpty(it.info.group)
+
+              if (channel != null) {
+                channel.ref.tell(it, self)
+                channel.messages.addMessage(it)
+                activeMessages.addMessage(it)
+              } else {
+                idleMessages.addMessage(it)
+              }
+            }
+
+            // replace items
+            replaceItems.forEach {
+              it as ReplaceMessage
+              val channel = activeChannels.reverseReplace(it.info) ?: activeChannels.minSubscribe()
+
+              if (channel != null) {
+                channel.ref.tell(it, self)
+                channel.messages.addMessage(it)
+                activeMessages.addMessage(it)
+              } else {
+                idleMessages.addMessage(it)
+              }
+            }
+
+            // append items
             allMessages.addMessageItems(srcItems)
             val averageSubscribeSize = allMessages.measureAverageSubscribeSize(config.maxSubscribe, activeChannels.size)
             var assignIndex = 0
@@ -101,26 +162,41 @@ class PooledSocketManager(
 
             for (channel in activeChannels) {
               val assignSize = Math.max(
-                Math.min(averageSubscribeSize - channel.messages.subscribeSize, srcItems.size - assignIndex),
+                Math.min(averageSubscribeSize - channel.messages.subscribeSize, appendItems.size - assignIndex),
                 0
               )
 
               if (assignSize > 0) {
-                assignItems = srcItems.subList(assignIndex, assignIndex + assignSize)
+                assignItems = appendItems.subList(assignIndex, assignIndex + assignSize)
 
                 channel.ref.tell(assignItems.autoBatch(), self)
                 channel.messages.addMessageItems(assignItems)
+                activeMessages.addMessageItems(assignItems)
                 assignIndex += assignSize
               }
 
-              if (assignIndex >= srcItems.size) {
+              if (assignIndex >= appendItems.size) {
                 break
               }
             }
-            if (assignIndex < srcItems.size) {
-              activeMessages.addMessageItems(srcItems.subList(0, assignIndex))
-              idleMessages.addMessageItems(srcItems.subList(assignIndex, srcItems.size))
+            if (assignIndex < appendItems.size) {
+              activeMessages.addMessageItems(appendItems.subList(0, assignIndex))
+              idleMessages.addMessageItems(appendItems.subList(assignIndex, appendItems.size))
             }
+
+            // queue items
+            if (!queueItems.isEmpty()) {
+              val channel = activeChannels.minSubscribe()
+
+              if (channel != null) {
+                channel.ref.tell(BatchSendMessage(queueItems), self)
+
+              } else {
+                idleMessages.addMessageItems(queueItems)
+              }
+            }
+
+            checkAndPrepareConnections()
 
           } else {
             // connections already under preparing
@@ -158,10 +234,21 @@ class PooledSocketManager(
             activeMessages.trimMessage(msg) ?: return
           }
           allMessages.addMessage(msg)
-          activeMessages.addMessage(msg)
-          val channel = activeChannels[0]
+          val channel = measureDispatchChannel(msg, activeChannels)
 
-          channel.dispatchIdleMessage(msg)
+          if (channel != null) {
+            activeMessages.addMessage(msg)
+            channel.ref.tell(msg, self)
+
+            if (msg !is QueueMessage) {
+              channel.messages.addMessage(msg)
+            }
+
+          } else {
+            idleMessages.addMessage(msg)
+          }
+          checkAndPrepareConnections()
+
         } else {
           allMessages.addMessage(msg)
           idleMessages.addMessage(msg)
@@ -246,13 +333,10 @@ class PooledSocketManager(
     if (oldState == SocketState.CONNECTED) {
       onConnectionInactive(channel)
     } else if (state == SocketState.CONNECTED) {
-      val channelInitialized = channel.isSubscribeInitialized
       assignIdleQueueMessageItems(channel)
       onConnectionActive(channel)
 
-      if (channelInitialized) {
-        balanceConnection(channel)
-      }
+      balanceConnection(channel)
     }
   }
 
@@ -318,7 +402,10 @@ class PooledSocketManager(
       .filter { (_, stat) -> stat.state == SocketState.CONNECTED }
       .map { (_, stat) -> stat }
 
-    val averageSubscribeSize = allMessages.measureAverageSubscribeSize(config.maxSubscribe, activeChannels.size)
+    val averageSubscribeSize = Math.max(
+      allMessages.measureAverageSubscribeSize(config.maxSubscribe, activeChannels.size),
+      config.initSubscribe
+    )
     val balanceItems = mutableListOf<SendMessage>()
 
     for (ch in activeChannels) {
@@ -463,6 +550,7 @@ class PooledSocketManager(
     } else {
       channel.ref.tell(items.autoBatch(), self)
       channel.messages.addMessageItems(items.filter { it !is QueueMessage })
+      activeMessages.addMessageItems(items)
     }
     channel.notifySubscribeInitialized()
   }
@@ -487,17 +575,32 @@ class PooledSocketManager(
 
   /* -- messages :begin -- */
 
-  private fun ChannelState.dispatchIdleMessage(it: SendMessage) {
-    if (!isSubscribeInitialized && messages.subscribeSize >= config.initSubscribe) {
-      return
-    }
-    ref.tell(it, self)
+  private fun measureDispatchChannel(msg: SendMessage, channels: List<ChannelState>): ChannelState? {
+    var oldChannel: ChannelState? = null
 
-    if (it !is QueueMessage) {
-      messages.addMessage(it)
+    when(msg) {
+      is AppendMessage -> {
+        oldChannel = channels.reverseAppend(msg.info)
+      }
+      is ClearAppendMessage -> {
+        oldChannel = channels.reverseAppend(msg.info)
+      }
+      is ReplaceMessage -> {
+        if (msg.strict) {
+          return channels.reverseStrict(msg.info) ?: channels.minSubscribeStrictEmpty(msg.info.group)
+        } else {
+          oldChannel = channels.reverseReplace(msg.info)
+        }
+      }
+      is ClearReplaceMessage -> {
+        if (msg.strict) {
+          return channels.reverseStrict(msg.info)
+        } else {
+          oldChannel = channels.reverseReplace(msg.info)
+        }
+      }
     }
-    activeMessages.addMessage(it)
-    idleMessages.removeMessage(it)
+    return oldChannel ?: channels.minSubscribe()
   }
 
   private fun ChannelState.release(): List<SendMessage> {
@@ -507,6 +610,49 @@ class PooledSocketManager(
     context.stop(ref)
 
     return msgItems
+  }
+
+  /**
+   * Returns min subscribe channel or null
+   */
+  private fun List<ChannelState>.minSubscribe(): ChannelState? {
+    return minBy { it.messages.subscribeSize }
+  }
+
+  /**
+   * Returns min subscribe channel or null
+   */
+  private fun List<ChannelState>.minSubscribeStrictEmpty(group: String): ChannelState? {
+    return strictEmptyChannels(group)
+      .minSubscribe()
+  }
+
+  /**
+   * Returns min subscribe channel or null
+   */
+  private fun List<ChannelState>.strictEmptyChannels(group: String): List<ChannelState> {
+    return filter { !it.messages.containsStrictGroup(group) }
+  }
+
+  /**
+   * Returns reverse append channel or null
+   */
+  private fun List<ChannelState>.reverseAppend(info: SubscribeInfo): ChannelState? {
+    return firstOrNull { it.messages.containsReverseAppendMessage(info) }
+  }
+
+  /**
+   * Returns reverse replace channel or null
+   */
+  private fun List<ChannelState>.reverseReplace(info: SubscribeInfo): ChannelState? {
+    return firstOrNull { it.messages.containsReverseReplaceMessage(info) }
+  }
+
+  /**
+   * Returns reverse strict channel or null
+   */
+  private fun List<ChannelState>.reverseStrict(info: SubscribeInfo): ChannelState? {
+    return firstOrNull { it.messages.containsReverseStrictMessage(info) }
   }
 
   /* -- messages :end -- */

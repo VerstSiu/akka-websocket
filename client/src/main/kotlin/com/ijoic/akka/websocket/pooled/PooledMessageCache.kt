@@ -187,7 +187,7 @@ internal class PooledMessageCache {
         is AppendMessage -> if (msgBox.containsMessage(it)) {
           removedItems.add(it)
         }
-        is ClearAppendMessage -> if (!msgBox.containsReverseMessage(it)) {
+        is ClearAppendMessage -> if (!msgBox.containsReverseAppendMessage(it.info)) {
           removedItems.add(it)
         }
         is ReplaceMessage -> {
@@ -204,7 +204,7 @@ internal class PooledMessageCache {
             if (!containsStrictMessage(it.info)) {
               removedItems.add(it)
             }
-          } else if (!msgBox.containsReverseMessage(it)) {
+          } else if (!msgBox.containsReverseReplaceMessage(it.info)) {
             removedItems.add(it)
           }
         }
@@ -228,7 +228,7 @@ internal class PooledMessageCache {
       is AppendMessage -> if (msgBox.containsMessage(message)) {
         return null
       }
-      is ClearAppendMessage -> if (!msgBox.containsReverseMessage(message)) {
+      is ClearAppendMessage -> if (!msgBox.containsReverseAppendMessage(message.info)) {
         return null
       }
       is ReplaceMessage -> {
@@ -245,7 +245,7 @@ internal class PooledMessageCache {
           if (!containsStrictMessage(message.info)) {
             return null
           }
-        } else if (!msgBox.containsReverseMessage(message)) {
+        } else if (!msgBox.containsReverseReplaceMessage(message.info)) {
           return null
         }
       }
