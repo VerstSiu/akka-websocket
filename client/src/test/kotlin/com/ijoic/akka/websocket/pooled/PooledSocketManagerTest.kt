@@ -740,6 +740,210 @@ class PooledSocketManagerTest {
     receiver.expectTerminated(m3.ref)
   }
 
+  @Test
+  fun testInactiveBalanceAppend() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3), PooledConfig(
+      initConnectionSize = 3,
+      initSubscribe = 2
+    ))
+    manager.requestConnect()
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectNoMessage()
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.notifyConnected(m3)
+    m3.expectNoMessage()
+
+    manager.tellBatchMessage(
+      "h1".toAppend(),
+      "h2".toAppend(),
+      "h3".toAppend(),
+      "h4".toAppend(),
+      "h5".toAppend(),
+      "h6".toAppend()
+    )
+    m1.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h1", "h2")
+    m2.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h3", "h4")
+    m3.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h5", "h6")
+
+    manager.tellState(SocketState.DISCONNECTING, m3)
+    m3.expectMsgClass(SocketManager.RequestClearSubscribe::class.java)
+    m1.expectMsgClass(AppendMessage::class.java).checkMessage("h5")
+    m2.expectMsgClass(AppendMessage::class.java).checkMessage("h6")
+
+    manager.notifyConnected(m3)
+    m1.expectMsgClass(ClearAppendMessage::class.java).checkMessage("h1")
+    m2.expectMsgClass(ClearAppendMessage::class.java).checkMessage("h3")
+    m3.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h1", "h3")
+  }
+
+  @Test
+  fun testInactiveBalanceAppendExistIdleConnection() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+    val m4 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3, m4), PooledConfig(
+      initConnectionSize = 2,
+      initSubscribe = 2,
+      minIdle = 1
+    ))
+    manager.requestConnect()
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m4.expectNoMessage()
+
+    manager.notifyConnected(m1)
+    m1.expectNoMessage()
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.notifyConnected(m3)
+    m3.expectNoMessage()
+
+    manager.tellBatchMessage(
+      "h1".toAppend(),
+      "h2".toAppend(),
+      "h3".toAppend(),
+      "h4".toAppend(),
+      "h5".toAppend(),
+      "h6".toAppend()
+    )
+    m1.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h1", "h2")
+    m2.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h3", "h4")
+    m3.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h5", "h6")
+    m4.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m4)
+    m4.expectNoMessage()
+
+    manager.tellState(SocketState.DISCONNECTING, m3)
+    m3.expectMsgClass(SocketManager.RequestClearSubscribe::class.java)
+    m4.expectMsgClass(BatchSendMessage::class.java).checkBatchMessage("h5", "h6")
+
+    manager.notifyConnected(m3)
+    m3.expectNoMessage()
+  }
+
+  @Test
+  fun testInactiveBalanceStrict() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3), PooledConfig(
+      initConnectionSize = 3,
+      initSubscribe = 2
+    ))
+    manager.requestConnect()
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectNoMessage()
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.notifyConnected(m3)
+    m3.expectNoMessage()
+
+    manager.tellBatchMessage(
+      "h1".toStrict(),
+      "h2".toStrict(),
+      "h3".toStrict()
+    )
+    m1.expectMsgClass(ReplaceMessage::class.java).checkStrict("h1")
+    m2.expectMsgClass(ReplaceMessage::class.java).checkStrict("h2")
+    m3.expectMsgClass(ReplaceMessage::class.java).checkStrict("h3")
+
+    manager.tellState(SocketState.DISCONNECTING, m3)
+    m3.expectMsgClass(SocketManager.RequestClearSubscribe::class.java)
+    m1.expectNoMessage()
+    m2.expectNoMessage()
+
+    manager.notifyConnected(m3)
+    m3.expectMsgClass(ReplaceMessage::class.java).checkStrict("h3")
+  }
+
+  @Test
+  fun testInactiveBalanceStrictExistIdleConnection() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+    val m4 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3, m4), PooledConfig(
+      initConnectionSize = 2,
+      initSubscribe = 2,
+      minIdle = 1
+    ))
+    manager.requestConnect()
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m4.expectNoMessage()
+
+    manager.notifyConnected(m1)
+    m1.expectNoMessage()
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.notifyConnected(m3)
+    m3.expectNoMessage()
+
+    manager.tellBatchMessage(
+      "h1".toStrict(),
+      "h2".toStrict(),
+      "h3".toStrict()
+    )
+    m1.expectMsgClass(ReplaceMessage::class.java).checkStrict("h1")
+    m2.expectMsgClass(ReplaceMessage::class.java).checkStrict("h2")
+    m3.expectMsgClass(ReplaceMessage::class.java).checkStrict("h3")
+    m4.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m4)
+    m4.expectNoMessage()
+
+    manager.tellState(SocketState.DISCONNECTING, m3)
+    m3.expectMsgClass(SocketManager.RequestClearSubscribe::class.java)
+    m4.expectMsgClass(ReplaceMessage::class.java).checkStrict("h3")
+
+    manager.notifyConnected(m3)
+    m3.expectNoMessage()
+  }
+
   /* -- single step test cases :begin -- */
 
   @Test
