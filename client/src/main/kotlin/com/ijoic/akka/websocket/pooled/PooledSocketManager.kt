@@ -261,7 +261,7 @@ class PooledSocketManager(
 
   private fun onRequestConnect() {
     if (childManagers.isEmpty()) {
-      prepareChildConnections(config.initConnectionSize + config.minIdle)
+      checkAndPrepareConnections()
 
     } else {
       for ((child, channel) in channelsMap) {
@@ -287,16 +287,13 @@ class PooledSocketManager(
       val oldMessages = channel.messages.allMessages()
 
       if (!oldMessages.isEmpty()) {
-        child.tell(SocketManager.RequestClearSubscribe(), self)
         activeMessages.removeMessageItems(oldMessages)
         idleMessages.addMessageItems(oldMessages)
       }
-      if (channel.state != SocketState.DISCONNECTED) {
-        channel.state = SocketState.DISCONNECTING
-        child.tell(SocketManager.RequestDisconnect(), self)
-      }
-      channel.resetSubscribeInitialized()
+      context.stop(child)
     }
+    childManagers.clear()
+    channelsMap.clear()
     isConnectionActive = false
   }
 
