@@ -98,7 +98,7 @@ internal class PooledMessageCache {
   /**
    * Remove [message]
    */
-  fun removeMessage(message: SendMessage) {
+  private fun removeMessage(message: SendMessage) {
     if (message is ReplaceMessage && message.strict) {
       removeStrictMessage(message.info)
     } else if (msgBox.removeMessage(message)) {
@@ -127,6 +127,19 @@ internal class PooledMessageCache {
         strictMessages.remove(group)
       }
     }
+  }
+
+  /**
+   * Returns all message items
+   */
+  fun allMessages(): List<SendMessage> {
+    val messages = mutableListOf<SendMessage>()
+
+    for ((_, msgList) in strictMessages) {
+      messages.addAll(msgList)
+    }
+    messages.addAll(msgBox.allMessages())
+    return messages
   }
 
   /**

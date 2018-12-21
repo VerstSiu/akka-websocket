@@ -71,6 +71,7 @@ class PooledSocketManager(
           // and active messages cleared
           allMessages.addMessageItems(items)
           idleMessages.addMessageItems(items)
+          notifyIdleState("dispatch items::connection inactive")
         }
         childManagers.isEmpty() -> {
           // no any exist connections
@@ -81,6 +82,7 @@ class PooledSocketManager(
           if (!idleMessages.isEmpty) {
             checkAndPrepareConnections()
           }
+          notifyIdleState("dispatch items::connection blank")
         }
         else -> {
           val activeChannels = channelsMap
@@ -197,6 +199,7 @@ class PooledSocketManager(
             }
 
             checkAndPrepareConnections()
+            notifyIdleState("dispatch items::connection part active: ${activeChannels.size}/${childManagers.size}")
 
           } else {
             // connections already under preparing
@@ -204,6 +207,7 @@ class PooledSocketManager(
             idleMessages.addMessageItems(items)
 
             checkAndPrepareConnections()
+            notifyIdleState("dispatch items::connection wait active: ${childManagers.size}")
           }
         }
       }
@@ -653,6 +657,23 @@ class PooledSocketManager(
   }
 
   /* -- messages :end -- */
+
+  private fun notifyIdleState(tag: String) {
+    val items = if (idleMessages.isEmpty) {
+      emptyList()
+    } else {
+      idleMessages.allMessages()
+    }
+    requester.tell(IdleState(tag, items), self)
+  }
+
+  /**
+   * Idle state
+   */
+  data class IdleState(
+    val tag: String,
+    val messages: List<SendMessage>
+  )
 
   companion object {
     /**

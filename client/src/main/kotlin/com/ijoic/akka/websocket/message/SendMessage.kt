@@ -115,6 +115,52 @@ internal fun List<SendMessage>.autoBatch(): MetricsMessage {
   }
 }
 
+/* -- subscribe info extensions :begin -- */
+
+/**
+ * Wrap current info as append message
+ */
+fun SubscribeInfo.asAppendMessage(): AppendMessage {
+  return AppendMessage(this)
+}
+
+/**
+ * Wrap current info as clear append message
+ */
+fun SubscribeInfo.asClearAppend(): AppendMessage {
+  return AppendMessage(this)
+}
+
+/**
+ * Wrap current info as replace message
+ */
+fun SubscribeInfo.asReplaceMessage(): ReplaceMessage {
+  return ReplaceMessage(this, strict = false)
+}
+
+/**
+ * Wrap current info as clear replace message
+ */
+fun SubscribeInfo.asClearReplace(): ReplaceMessage {
+  return ReplaceMessage(this, strict = false)
+}
+
+/**
+ * Wrap current info as strict message
+ */
+fun SubscribeInfo.asStrictMessage(): ReplaceMessage {
+  return ReplaceMessage(this, strict = true)
+}
+
+/**
+ * Wrap current info as clear strict message
+ */
+fun SubscribeInfo.asClearStrict(): ReplaceMessage {
+  return ReplaceMessage(this, strict = true)
+}
+
+/* -- subscribe info extensions :end -- */
+
 /**
  * Returns subscribe [info] contains status of current collection items
  */
