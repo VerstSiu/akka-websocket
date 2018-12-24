@@ -23,6 +23,8 @@ import okhttp3.*
 import okio.ByteString
 import java.lang.IllegalArgumentException
 import java.lang.RuntimeException
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.nio.ByteBuffer
 
 /**
@@ -40,7 +42,7 @@ class OkHttpSocketClient : SocketClient {
     }
     this.listener = listener
 
-    val client = OkHttpClient()
+    val client = getClientInstance(options)
     val request = Request.Builder()
       .url(options.url)
       .build()
@@ -96,6 +98,18 @@ class OkHttpSocketClient : SocketClient {
         )
       )
     }
+  }
+
+  private fun getClientInstance(options: DefaultSocketOptions): OkHttpClient {
+    val proxyHost = options.proxyHost
+    val proxyPort = options.proxyPort
+
+    if (proxyHost != null && !proxyHost.isBlank() && proxyPort != null) {
+      return OkHttpClient.Builder()
+        .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(proxyHost, proxyPort)))
+        .build()
+    }
+    return OkHttpClient()
   }
 
   /**

@@ -38,5 +38,7 @@ data class DefaultSocketOptions(
     Duration.ofSeconds(4),
     Duration.ofSeconds(8),
     Duration.ofSeconds(16)
-  )
+  ),
+  val proxyHost: String? = null,
+  val proxyPort: Int? = null
 ): ClientOptions
