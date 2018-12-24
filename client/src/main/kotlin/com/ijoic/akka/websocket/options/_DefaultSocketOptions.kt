@@ -28,6 +28,29 @@ fun DefaultSocketOptions.toggleUrl(newUrl: String): DefaultSocketOptions {
     this.pingMessage,
     this.pingDuration,
     this.disconnectWhenIdle,
-    this.disconnectWhenIdleDelay
+    this.disconnectWhenIdleDelay,
+    this.retryType,
+    this.retryIntervals,
+    this.proxyHost,
+    this.proxyPort
+  )
+}
+
+/**
+ * Wrap current config with [proxyHost] and [proxyPort]
+ *
+ * @author verstsiu created at 2018-12-24 17:08
+ */
+fun DefaultSocketOptions.wrapProxy(proxyHost: String?, proxyPort: Int?): DefaultSocketOptions {
+  return DefaultSocketOptions(
+    this.url,
+    this.pingMessage,
+    this.pingDuration,
+    this.disconnectWhenIdle,
+    this.disconnectWhenIdleDelay,
+    this.retryType,
+    this.retryIntervals,
+    proxyHost,
+    proxyPort
   )
 }

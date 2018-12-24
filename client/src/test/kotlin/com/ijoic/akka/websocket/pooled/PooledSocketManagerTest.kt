@@ -23,6 +23,7 @@ import akka.actor.ActorSystem
 import akka.testkit.javadsl.TestKit
 import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.message.*
+import com.ijoic.akka.websocket.pooled.proxy.ProxyConfig
 import com.ijoic.akka.websocket.state.SocketState
 import org.junit.AfterClass
 import org.junit.BeforeClass
@@ -3106,8 +3107,8 @@ class PooledSocketManagerTest {
   /**
    * List manager provider
    */
-  private class ListManagerProvider(private val items: List<ActorRef>): (AbstractActor.ActorContext, ActorRef, Int) -> ActorRef {
-    override fun invoke(context: AbstractActor.ActorContext, ref: ActorRef, id: Int): ActorRef {
+  private class ListManagerProvider(private val items: List<ActorRef>): (AbstractActor.ActorContext, ActorRef, ProxyConfig.HostInfo?, Int) -> ActorRef {
+    override fun invoke(context: AbstractActor.ActorContext, ref: ActorRef, hostInfo: ProxyConfig.HostInfo?, id: Int): ActorRef {
       return items.getOrNull(id) ?: items.last()
     }
   }

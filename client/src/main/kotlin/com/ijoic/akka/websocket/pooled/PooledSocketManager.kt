@@ -26,6 +26,10 @@ import com.ijoic.akka.websocket.client.SocketClient
 import com.ijoic.akka.websocket.client.SocketManager
 import com.ijoic.akka.websocket.client.SocketMessage
 import com.ijoic.akka.websocket.message.*
+import com.ijoic.akka.websocket.options.DefaultSocketOptions
+import com.ijoic.akka.websocket.options.wrapProxy
+import com.ijoic.akka.websocket.pooled.proxy.ProxyConfig
+import com.ijoic.akka.websocket.pooled.proxy.ProxyManager
 import com.ijoic.akka.websocket.state.SocketState
 import com.ijoic.metrics.statReceived
 
@@ -36,7 +40,7 @@ import com.ijoic.metrics.statReceived
  */
 class PooledSocketManager(
   private val requester: ActorRef,
-  private val createManager: (ActorContext, ActorRef, Int) -> ActorRef,
+  private val createManager: (ActorContext, ActorRef, ProxyConfig.HostInfo?, Int) -> ActorRef,
   config: PooledConfig): AbstractActor() {
 
   private val config: PooledConfig = config.checkValid()
@@ -50,6 +54,8 @@ class PooledSocketManager(
   private val allMessages = PooledMessageCache()
   private val activeMessages = PooledMessageCache()
   private val idleMessages = PooledMessageCache()
+
+  private val proxyManager = ProxyManager<ActorRef>(config.proxyConfig)
 
   private fun dispatchBatchSendMessage(event: BatchSendMessage) {
     dispatchMessageItems(event.items, trimRequired = true)
@@ -297,6 +303,7 @@ class PooledSocketManager(
     }
     childManagers.clear()
     channelsMap.clear()
+    proxyManager.reset()
     isConnectionActive = false
     activeConnectionSize = 0
   }
@@ -355,6 +362,7 @@ class PooledSocketManager(
     }
     context.unwatch(child)
     childManagers.remove(child)
+    proxyManager.releaseProxyId(child)
 
     val channel = channelsMap[child]
     channelsMap.remove(child)
@@ -470,14 +478,20 @@ class PooledSocketManager(
       return
     }
     repeat(childSize) {
-      val child = createManager(context, self, genChildIndex)
-      ++genChildIndex
+      val proxyId = proxyManager.obtainProxyId()
 
-      child.tell(SocketManager.RequestConnect(), self)
-      context.watch(child)
-      childManagers.add(child)
-      channelsMap[child] = ChannelState(child).apply {
-        state = SocketState.CONNECTING
+      if (proxyId != null) {
+        val hostInfo = proxyManager.getHostInfo(proxyId)
+        val child = createManager(context, self, hostInfo, genChildIndex)
+        ++genChildIndex
+
+        child.tell(SocketManager.RequestConnect(), self)
+        context.watch(child)
+        childManagers.add(child)
+        channelsMap[child] = ChannelState(child).apply {
+          state = SocketState.CONNECTING
+        }
+        proxyManager.assignProxyId(proxyId, child)
       }
     }
   }
@@ -621,6 +635,7 @@ class PooledSocketManager(
     childManagers.remove(ref)
     channelsMap.remove(ref)
     context.stop(ref)
+    proxyManager.releaseProxyId(ref)
 
     return msgItems
   }
@@ -702,7 +717,7 @@ class PooledSocketManager(
      */
     @JvmStatic
     @JvmOverloads
-    internal fun props(requester: ActorRef, createManager: (ActorContext, ActorRef, Int) -> ActorRef, config: PooledConfig? = null): Props {
+    internal fun props(requester: ActorRef, createManager: (ActorContext, ActorRef, ProxyConfig.HostInfo?, Int) -> ActorRef, config: PooledConfig? = null): Props {
       return Props.create(PooledSocketManager::class.java, requester, createManager, config ?: PooledConfig())
     }
 
@@ -712,8 +727,12 @@ class PooledSocketManager(
     @JvmStatic
     @JvmOverloads
     fun props(options: ClientOptions, requester: ActorRef, createClient: (() -> SocketClient?)? = null, config: PooledConfig? = null): Props {
-      val createManager: (ActorContext, ActorRef, Int) -> ActorRef = { context, ref, id ->
-        context.actorOf(SocketManager.props(options, ref, createClient?.invoke()), "child-$id")
+      val createManager: (ActorContext, ActorRef, ProxyConfig.HostInfo?, Int) -> ActorRef = { context, ref, hostInfo, id ->
+        val wrapOptions = when(options) {
+          is DefaultSocketOptions -> options.wrapProxy(hostInfo?.host, hostInfo?.port)
+          else -> options
+        }
+        context.actorOf(SocketManager.props(wrapOptions, ref, createClient?.invoke()), "child-$id")
       }
       return props(requester, createManager, config)
     }
