@@ -27,19 +27,56 @@ import com.ijoic.metrics.MetricsMessage
 abstract class SocketMessage: MetricsMessage()
 
 /**
+ * Socket error
+ */
+abstract class SocketError: SocketMessage() {
+  /**
+   * Error code
+   */
+  abstract val code: String?
+
+  /**
+   * Error message
+   */
+  abstract val message: String?
+
+  /**
+   * Error cause
+   */
+  abstract val cause: Throwable?
+}
+
+/**
  * Connection completed
  */
 class ConnectionCompleted: SocketMessage()
 
 /**
- * Connection failure
+ * Connection error
  */
-data class ConnectionFailure(val cause: Throwable): SocketMessage()
+data class ConnectionError(
+  override val code: String? = null,
+  override val message: String? = null,
+  override val cause: Throwable? = null
+): SocketError()
 
 /**
  * Connection closed
  */
-data class ConnectionClosed(val cause: Throwable? = null): SocketMessage()
+data class ConnectionClosed(
+  override val code: String? = null,
+  override val message: String? = null,
+  override val cause: Throwable? = null
+): SocketError()
+
+/**
+ * Message error
+ */
+data class MessageError(
+  override val code: String? = null,
+  override val message: String? = null,
+  override val cause: Throwable? = null
+): SocketError()
 
 /**
  * Receive text

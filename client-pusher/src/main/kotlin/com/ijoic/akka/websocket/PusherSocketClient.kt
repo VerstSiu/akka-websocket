@@ -20,7 +20,6 @@ package com.ijoic.akka.websocket
 import com.ijoic.akka.websocket.client.*
 import com.ijoic.akka.websocket.options.WrapPusherOptions
 import com.ijoic.akka.websocket.pusher.AddSubscribe
-import com.ijoic.akka.websocket.pusher.PusherError
 import com.ijoic.akka.websocket.pusher.PusherResponse
 import com.ijoic.akka.websocket.pusher.RemoveSubscribe
 import com.pusher.client.Pusher
@@ -109,11 +108,9 @@ class PusherSocketClient : SocketClient, ConnectionEventListener, ChannelEventLi
 
   override fun onError(message: String?, code: String?, e: java.lang.Exception?) {
     if (e == null) {
-      if (message != null || code != null) {
-        post(PusherError(message, code))
-      }
+      post(MessageError(code, message, e))
     } else {
-      post(ConnectionFailure(e))
+      post(ConnectionError(code, message, e))
     }
   }
 

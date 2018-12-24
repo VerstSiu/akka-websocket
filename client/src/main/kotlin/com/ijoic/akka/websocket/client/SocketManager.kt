@@ -129,7 +129,7 @@ class SocketManager(
         } else {
           when (it) {
             is ConnectionCompleted -> onConnectionCompleted()
-            is ConnectionFailure -> onConnectionFailure()
+            is ConnectionError -> onConnectionFailure()
             is ConnectionClosed -> onConnectionClosed()
           }
         }

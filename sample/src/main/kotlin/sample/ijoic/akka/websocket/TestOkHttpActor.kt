@@ -20,7 +20,9 @@ fun main() {
     pingMessage = "ping",
     pingDuration = Duration.ofSeconds(5),
     disconnectWhenIdle = true,
-    disconnectWhenIdleDelay = Duration.ofSeconds(20)
+    disconnectWhenIdleDelay = Duration.ofSeconds(20),
+    proxyHost = "127.0.0.1",
+    proxyPort = 1331
   )
 
   val receiver = system.actorOf(ReceiverActor.props())

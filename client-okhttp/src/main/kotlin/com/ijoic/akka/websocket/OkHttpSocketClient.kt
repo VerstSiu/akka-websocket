@@ -21,8 +21,6 @@ import com.ijoic.akka.websocket.client.*
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import okhttp3.*
 import okio.ByteString
-import java.lang.IllegalArgumentException
-import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.nio.ByteBuffer
@@ -54,7 +52,7 @@ class OkHttpSocketClient : SocketClient {
       }
 
       override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-        post(ConnectionFailure(t))
+        post(ConnectionError(cause = t))
       }
 
       override fun onMessage(webSocket: WebSocket, text: String) {
@@ -71,7 +69,7 @@ class OkHttpSocketClient : SocketClient {
 
       override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
         socket = null
-        post(ConnectionClosed(RuntimeException("connection closed, code: $code, reason: $reason")))
+        post(ConnectionClosed(code.toString(), reason))
       }
     })
   }
