@@ -74,17 +74,19 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
 
   private fun obtainIdleProxyIdOrNull(): String? {
     return proxyIdList.firstOrNull {
-      val itemCount = itemCountMap[it]
+      val itemCount = itemCountMap[it] ?: 0
       val errorCount = errorCountMap[it] ?: 0
-      itemCount == null || (itemCount + errorCount) < minActive
+
+      (itemCount + errorCount) < minActive
     }
   }
 
   private fun obtainActiveProxyIdOrNull(): String? {
     return proxyIdList.firstOrNull {
-      val itemCount = itemCountMap[it]
+      val itemCount = itemCountMap[it] ?: 0
       val errorCount = errorCountMap[it] ?: 0
-      itemCount != null && itemCount >= minActive && (itemCount + errorCount) < maxActive
+
+      itemCount >= minActive && (itemCount + errorCount) < maxActive
     }
   }
 
