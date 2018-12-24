@@ -41,6 +41,7 @@ class PooledSocketManager(
 
   private val config: PooledConfig = config.checkValid()
   private var isConnectionActive = true
+  private var activeConnectionSize = 0
 
   private var genChildIndex = 0
   private val childManagers = mutableListOf<ActorRef>()
@@ -52,10 +53,12 @@ class PooledSocketManager(
 
   private fun dispatchBatchSendMessage(event: BatchSendMessage) {
     dispatchMessageItems(event.items, trimRequired = true)
+    notifyAssignWarning("dispatch items")
   }
 
   private fun dispatchSendMessage(msg: SendMessage) {
     dispatchMessage(msg, trimRequired = true)
+    notifyAssignWarning("dispatch message")
   }
 
   private fun dispatchMessageItems(items: List<SendMessage>, trimRequired: Boolean = false) {
@@ -71,7 +74,6 @@ class PooledSocketManager(
           // and active messages cleared
           allMessages.addMessageItems(items)
           idleMessages.addMessageItems(items)
-          notifyIdleState("dispatch items::connection inactive")
         }
         childManagers.isEmpty() -> {
           // no any exist connections
@@ -82,7 +84,6 @@ class PooledSocketManager(
           if (!idleMessages.isEmpty) {
             checkAndPrepareConnections()
           }
-          notifyIdleState("dispatch items::connection blank")
         }
         else -> {
           val activeChannels = channelsMap
@@ -199,7 +200,6 @@ class PooledSocketManager(
             }
 
             checkAndPrepareConnections()
-            notifyIdleState("dispatch items::connection part active: ${activeChannels.size}/${childManagers.size}")
 
           } else {
             // connections already under preparing
@@ -207,7 +207,6 @@ class PooledSocketManager(
             idleMessages.addMessageItems(items)
 
             checkAndPrepareConnections()
-            notifyIdleState("dispatch items::connection wait active: ${childManagers.size}")
           }
         }
       }
@@ -299,6 +298,7 @@ class PooledSocketManager(
     childManagers.clear()
     channelsMap.clear()
     isConnectionActive = false
+    activeConnectionSize = 0
   }
 
   private fun onChildStateChanged(child: ActorRef, state: SocketState) {
@@ -315,6 +315,9 @@ class PooledSocketManager(
       return
     }
     if (state == SocketState.DISCONNECTED) {
+      if (oldState == SocketState.CONNECTED) {
+        --activeConnectionSize
+      }
       channel.state = SocketState.CONNECTING
 
       if (oldState == SocketState.CONNECTED) {
@@ -326,18 +329,23 @@ class PooledSocketManager(
       } else {
         child.tell(SocketManager.RequestConnect(), self)
       }
+      notifyAssignWarning("child disconnected")
       return
     }
     if (oldState == state) {
       return
     }
     if (oldState == SocketState.CONNECTED) {
+      --activeConnectionSize
       onConnectionInactive(channel)
+      notifyAssignWarning("child inactive")
     } else if (state == SocketState.CONNECTED) {
+      ++activeConnectionSize
       assignIdleQueueMessageItems(channel)
       onConnectionActive(channel)
 
       balanceConnection(channel)
+      notifyAssignWarning("child active")
     }
   }
 
@@ -352,6 +360,9 @@ class PooledSocketManager(
     channelsMap.remove(child)
 
     if (channel != null) {
+      if (channel.state == SocketState.CONNECTED) {
+        --activeConnectionSize
+      }
       val items = channel.messages.allMessages()
 
       if (!items.isEmpty()) {
@@ -360,6 +371,7 @@ class PooledSocketManager(
       }
       checkAndPrepareConnections()
     }
+    notifyAssignWarning("child terminated")
   }
 
   override fun createReceive(): Receive {
@@ -658,21 +670,30 @@ class PooledSocketManager(
 
   /* -- messages :end -- */
 
-  private fun notifyIdleState(tag: String) {
-    val items = if (idleMessages.isEmpty) {
-      emptyList()
-    } else {
-      idleMessages.allMessages()
+  private fun notifyAssignWarning(tag: String) {
+    if (!config.assignMessageEnabled || idleMessages.isEmpty) {
+      return
     }
-    requester.tell(IdleState(tag, items), self)
+
+    requester.tell(
+      AssignWarning(
+        tag,
+        activeConnectionSize,
+        childManagers.size,
+        idleMessages.allMessages()
+      ),
+      self
+    )
   }
 
   /**
-   * Idle state
+   * Assign warning
    */
-  data class IdleState(
+  data class AssignWarning(
     val tag: String,
-    val messages: List<SendMessage>
+    val activeConnectionSize: Int,
+    val allConnectionSize: Int,
+    val idleMessages: List<SendMessage>
   )
 
   companion object {

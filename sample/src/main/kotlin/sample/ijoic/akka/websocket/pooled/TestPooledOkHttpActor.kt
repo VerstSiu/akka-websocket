@@ -32,7 +32,8 @@ fun main() {
       receiver,
       { OkHttpSocketClient() },
       PooledConfig(
-        minIdle = 0
+        minIdle = 0,
+        assignMessageEnabled = true
       )
     ),
     "pooled-manager"

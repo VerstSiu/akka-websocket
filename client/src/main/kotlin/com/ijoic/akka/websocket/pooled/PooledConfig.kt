@@ -27,7 +27,8 @@ data class PooledConfig(
   val initSubscribe: Int = DEFAULT_INIT_SUBSCRIBE,
   val maxSubscribe: Int = DEFAULT_MAX_SUBSCRIBE,
   val minIdle: Int = DEFAULT_MIN_IDLE,
-  val maxIdle: Int = DEFAULT_MAX_IDLE) {
+  val maxIdle: Int = DEFAULT_MAX_IDLE,
+  val assignMessageEnabled: Boolean = false) {
 
   /**
    * Returns valid pooled config instance
@@ -38,7 +39,8 @@ data class PooledConfig(
       initSubscribe = this.initSubscribe.takeIf { it >= 1 } ?: DEFAULT_INIT_SUBSCRIBE,
       maxSubscribe = this.maxSubscribe.takeIf { it >= 1 } ?: DEFAULT_MAX_SUBSCRIBE,
       minIdle = this.minIdle.takeIf { it >= 0 } ?: DEFAULT_MIN_IDLE,
-      maxIdle = this.maxIdle.takeIf { it >= 0 } ?: DEFAULT_MAX_IDLE
+      maxIdle = this.maxIdle.takeIf { it >= 0 } ?: DEFAULT_MAX_IDLE,
+      assignMessageEnabled = this.assignMessageEnabled
     )
   }
 
