@@ -41,8 +41,20 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
   private val minActive = config?.minActive ?: 0
   private val maxActive = Math.max(config?.maxActive ?: 0, minActive)
 
-  private val proxyToItemCountMap = mutableMapOf<String, Int>()
-  private val itemToHostIdMap = mutableMapOf<T, String>()
+  /**
+   * proxyId -> itemCount
+   */
+  private val itemCountMap = mutableMapOf<String, Int>()
+
+  /**
+   * proxyId -> errorCount
+   */
+  private val errorCountMap = mutableMapOf<String, Int>()
+
+  /**
+   * item -> proxyId
+   */
+  private val proxyIdMap = mutableMapOf<T, String>()
 
   /**
    * Proxy enabled status
@@ -62,15 +74,17 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
 
   private fun obtainIdleProxyIdOrNull(): String? {
     return proxyIdList.firstOrNull {
-      val itemCount = proxyToItemCountMap[it]
-      itemCount == null || itemCount < minActive
+      val itemCount = itemCountMap[it]
+      val errorCount = errorCountMap[it] ?: 0
+      itemCount == null || (itemCount + errorCount) < minActive
     }
   }
 
   private fun obtainActiveProxyIdOrNull(): String? {
     return proxyIdList.firstOrNull {
-      val itemCount = proxyToItemCountMap[it]
-      itemCount != null && itemCount >= minActive && itemCount < maxActive
+      val itemCount = itemCountMap[it]
+      val errorCount = errorCountMap[it] ?: 0
+      itemCount != null && itemCount >= minActive && (itemCount + errorCount) < maxActive
     }
   }
 
@@ -87,47 +101,81 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
    * Assign [proxyId] with [item] reference
    */
   fun assignProxyId(proxyId: String, item: T) {
-    itemToHostIdMap[item] = proxyId
-    increaseItemCount(proxyId)
+    proxyIdMap[item] = proxyId
+    itemCountMap.increase(proxyId, maxActive)
   }
 
   /**
    * Release proxy id for [item] reference
    */
   fun releaseProxyId(item: T) {
-    val proxyId = itemToHostIdMap[item]
-    itemToHostIdMap.remove(item)
+    val proxyId = proxyIdMap[item]
+    proxyIdMap.remove(item)
 
     if (proxyId != null) {
-      decreaseItemCount(proxyId)
+      itemCountMap.decrease(proxyId)
     }
   }
 
-  private fun increaseItemCount(proxyId: String) {
-    val itemCount = proxyToItemCountMap[proxyId]
-
-    if (itemCount == null) {
-      proxyToItemCountMap[proxyId] = 0
-    } else {
-      proxyToItemCountMap[proxyId] = itemCount + 1
-    }
+  /**
+   * Notify connection complete
+   */
+  fun notifyConnectionComplete(item: T) {
+    val proxyId = proxyIdMap[item] ?: return
+    errorCountMap.decrease(proxyId)
   }
 
-  private fun decreaseItemCount(proxyId: String) {
-    val itemCount = proxyToItemCountMap[proxyId] ?: return
+  /**
+   * Notify connection error
+   */
+  fun notifyConnectionError(item: T) {
+    val proxyId = proxyIdMap[item] ?: return
+    errorCountMap.increase(proxyId, maxActive)
+  }
 
-    if (itemCount > 0) {
-      proxyToItemCountMap[proxyId] = itemCount - 1
-    } else {
-      proxyToItemCountMap.remove(proxyId)
+  /**
+   * Returns connection unreachable status
+   */
+  fun isConnectionUneachable(item: T): Boolean {
+    val proxyId = proxyIdMap[item]
+
+    if (!proxyEnabled || proxyId == null) {
+      return false
     }
+    return errorCountMap[proxyId] == maxActive
   }
 
   /**
    * Reset manager status
    */
   fun reset() {
-    itemToHostIdMap.clear()
-    proxyToItemCountMap.clear()
+    proxyIdMap.clear()
+    itemCountMap.clear()
+  }
+
+  /**
+   * Increase count value with [itemKey] and count [max]
+   */
+  private fun MutableMap<String, Int>.increase(itemKey: String, max: Int) {
+    val itemCount = this[itemKey]
+
+    if (itemCount == null) {
+      this[itemKey] = 0
+    } else if (itemCount < max) {
+      this[itemKey] = itemCount + 1
+    }
+  }
+
+  /**
+   * Increase count value with [itemKey] and count [max]
+   */
+  private fun MutableMap<String, Int>.decrease(itemKey: String) {
+    val itemCount = this[itemKey] ?: return
+
+    if (itemCount > 0) {
+      this[itemKey] = itemCount - 1
+    } else {
+      this.remove(itemKey)
+    }
   }
 }

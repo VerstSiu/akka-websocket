@@ -21,10 +21,7 @@ import akka.actor.AbstractActor
 import akka.actor.ActorRef
 import akka.actor.Props
 import akka.actor.Terminated
-import com.ijoic.akka.websocket.client.ClientOptions
-import com.ijoic.akka.websocket.client.SocketClient
-import com.ijoic.akka.websocket.client.SocketManager
-import com.ijoic.akka.websocket.client.SocketMessage
+import com.ijoic.akka.websocket.client.*
 import com.ijoic.akka.websocket.message.*
 import com.ijoic.akka.websocket.options.DefaultSocketOptions
 import com.ijoic.akka.websocket.options.wrapProxy
@@ -395,6 +392,18 @@ class PooledSocketManager(
       .match(SocketMessage::class.java) {
         it.statReceived()
         requester.forward(it, context)
+
+        when(it) {
+          is ConnectionCompleted -> proxyManager.notifyConnectionComplete(sender)
+          is ConnectionError,
+          is ConnectionClosed -> {
+            proxyManager.notifyConnectionError(sender)
+
+            if (proxyManager.isConnectionUneachable(sender)) {
+              context.stop(sender)
+            }
+          }
+        }
       }
       .match(SocketState::class.java) {
         onChildStateChanged(sender, it)
