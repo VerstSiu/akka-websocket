@@ -31,6 +31,9 @@ class ReceiverActor: AbstractLoggingActor() {
       .match(PooledSocketManager.AssignWarning::class.java) {
         println("${it.tag} - connections: ${it.activeConnectionSize}/${it.allConnectionSize}, idle message size: ${it.idleMessages.size}")
       }
+      .match(PooledSocketManager.PooledError::class.java) {
+        println(it.message)
+      }
       .build()
   }
 

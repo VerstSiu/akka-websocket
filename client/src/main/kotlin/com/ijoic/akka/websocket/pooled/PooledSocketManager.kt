@@ -400,6 +400,7 @@ class PooledSocketManager(
             proxyManager.notifyConnectionError(sender)
 
             if (proxyManager.isConnectionUneachable(sender)) {
+              notifyPooledError("proxy unreachable: ${proxyManager.getHostInfo(sender)}")
               context.stop(sender)
             }
           }
@@ -501,6 +502,8 @@ class PooledSocketManager(
           state = SocketState.CONNECTING
         }
         proxyManager.assignProxyId(proxyId, child)
+      } else {
+        notifyPooledError("could not create child connection: proxy active-connections full")
       }
     }
   }
@@ -710,6 +713,13 @@ class PooledSocketManager(
     )
   }
 
+  private fun notifyPooledError(message: String) {
+    if (!config.assignMessageEnabled) {
+      return
+    }
+    requester.tell(PooledError(message), self)
+  }
+
   /**
    * Assign warning
    */
@@ -718,6 +728,13 @@ class PooledSocketManager(
     val activeConnectionSize: Int,
     val allConnectionSize: Int,
     val idleMessages: List<SendMessage>
+  )
+
+  /**
+   * Pooled error
+   */
+  data class PooledError(
+    val message: String
   )
 
   companion object {

@@ -100,6 +100,16 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
   }
 
   /**
+   * Wrap client options with proxy info related to [proxyId]
+   *
+   * Returns null if all proxies exceed the max-active connection size
+   */
+  fun getHostInfo(item: T): ProxyConfig.HostInfo? {
+    val proxyId = proxyIdMap[item] ?: return null
+    return proxyIdToHostInfoMap[proxyId]
+  }
+
+  /**
    * Assign [proxyId] with [item] reference
    */
   fun assignProxyId(proxyId: String, item: T) {
