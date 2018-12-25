@@ -37,12 +37,17 @@ abstract class SubscribeMessage: SendMessage(), Serializable {
    * Subscribe info
    */
   abstract val info: SubscribeInfo
+
+  /**
+   * Identity
+   */
+  abstract val id: String?
 }
 
 /**
  * Append message
  */
-data class AppendMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
+data class AppendMessage(override val info: SubscribeInfo, override val id: String? = null): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -53,7 +58,7 @@ data class AppendMessage(override val info: SubscribeInfo): SubscribeMessage(), 
  *
  * Clear replace would only match subscribe equals when [strict] == true
  */
-data class ReplaceMessage(override val info: SubscribeInfo, val strict: Boolean = false): SubscribeMessage(), Serializable {
+data class ReplaceMessage(override val info: SubscribeInfo, val strict: Boolean = false, override val id: String? = null): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -62,7 +67,7 @@ data class ReplaceMessage(override val info: SubscribeInfo, val strict: Boolean 
 /**
  * Clear append message
  */
-data class ClearAppendMessage(override val info: SubscribeInfo): SubscribeMessage(), Serializable {
+data class ClearAppendMessage(override val info: SubscribeInfo, override val id: String? = null): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -73,7 +78,7 @@ data class ClearAppendMessage(override val info: SubscribeInfo): SubscribeMessag
  *
  * Clear replace would only match subscribe equals when [strict] == true
  */
-data class ClearReplaceMessage(override val info: SubscribeInfo, val strict: Boolean = false): SubscribeMessage(), Serializable {
+data class ClearReplaceMessage(override val info: SubscribeInfo, val strict: Boolean = false, override val id: String? = null): SubscribeMessage(), Serializable {
   companion object {
     private const val serialVersionUID: Long = 1
   }
@@ -160,6 +165,30 @@ fun SubscribeInfo.asClearStrict(): ReplaceMessage {
 }
 
 /* -- subscribe info extensions :end -- */
+
+/**
+ * Returns subscribe info equals status
+ */
+internal fun SubscribeMessage.subscribeEquals(other: SubscribeMessage): Boolean {
+  if (this.id != null) {
+    return this.id == other.id
+  }
+  return this.info.subscribe == other.info.subscribe
+}
+
+/**
+ * Returns subscribe [message] contains status of current collection items
+ */
+internal fun <T: SubscribeMessage> Collection<T>.containsMessage(message: SubscribeMessage): Boolean {
+  return this.any { it.subscribeEquals(message) }
+}
+
+/**
+ * Returns old subscribe [message] or null
+ */
+internal fun <T: SubscribeMessage> Collection<T>.oldMessageOrNull(message: SubscribeMessage): T? {
+  return this.firstOrNull { it.subscribeEquals(message) }
+}
 
 /**
  * Returns subscribe [info] contains status of current collection items

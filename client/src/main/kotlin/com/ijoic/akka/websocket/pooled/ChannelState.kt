@@ -44,13 +44,6 @@ internal class ChannelState(val ref: ActorRef) {
     private set
 
   /**
-   * Reset subscribe initialized
-   */
-  fun resetSubscribeInitialized() {
-    isSubscribeInitialized = true
-  }
-
-  /**
    * Notify subscribe initialized
    */
   fun notifySubscribeInitialized() {

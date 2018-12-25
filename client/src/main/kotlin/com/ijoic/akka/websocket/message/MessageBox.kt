@@ -28,7 +28,7 @@ internal class MessageBox {
   /**
    * Append messages (group - set items)
    */
-  private val appendMessages: MutableMap<String, MutableList<SubscribeInfo>> = mutableMapOf()
+  private val appendMessages: MutableMap<String, MutableList<AppendMessage>> = mutableMapOf()
 
   /**
    * Unique messages (group - unique item)
@@ -52,24 +52,22 @@ internal class MessageBox {
   fun addMessage(message: SendMessage): Boolean {
     when(message) {
       is AppendMessage -> {
-        val info = message.info
-        val group = info.group
-        val msgList = appendMessages[group] ?: mutableListOf<SubscribeInfo>().also {
+        val group = message.info.group
+        val msgList = appendMessages[group] ?: mutableListOf<AppendMessage>().also {
           appendMessages[group] = it
         }
 
-        if (msgList.isEmpty() || !msgList.containsInfo(info)) {
-          msgList.add(info)
+        if (msgList.isEmpty() || !msgList.containsMessage(message)) {
+          msgList.add(message)
           ++subscribeSize
           return true
         }
       }
       is ReplaceMessage -> {
-        val info = message.info
-        val group = info.group
+        val group = message.info.group
         val msgOld = uniqueMessages[group]
 
-        if (msgOld?.info?.subscribe != info.subscribe) {
+        if (msgOld == null || !msgOld.subscribeEquals(message)) {
           if (msgOld == null) {
             ++subscribeSize
           }
@@ -78,26 +76,24 @@ internal class MessageBox {
         }
       }
       is ClearAppendMessage -> {
-        val info = message.info
-        val group = info.group
+        val group = message.info.group
         val msgList = appendMessages[group]
 
         if (msgList != null) {
-          val oldInfo = msgList.oldInfoOrNull(info)
+          val oldMessage = msgList.oldMessageOrNull(message)
 
-          if (oldInfo != null) {
-            msgList.remove(oldInfo)
+          if (oldMessage != null) {
+            msgList.remove(oldMessage)
             --subscribeSize
           }
           return true
         }
       }
       is ClearReplaceMessage -> {
-        val info = message.info
-        val group = info.group
+        val group = message.info.group
         val msgOld = uniqueMessages[group]
 
-        if (msgOld != null && (!message.strict || msgOld.info.subscribe == info.subscribe)) {
+        if (msgOld != null && (!message.strict || msgOld.subscribeEquals(message))) {
           --subscribeSize
           uniqueMessages.remove(group)
           return true
@@ -124,23 +120,21 @@ internal class MessageBox {
   fun removeMessage(message: SendMessage): Boolean {
     when(message) {
       is AppendMessage -> {
-        val info = message.info
-        val group = info.group
+        val group = message.info.group
         val msgList = appendMessages[group]
 
         if (msgList != null) {
-          val oldInfo = msgList.oldInfoOrNull(info)
+          val oldMessage = msgList.oldMessageOrNull(message)
 
-          if (oldInfo != null) {
-            msgList.remove(oldInfo)
+          if (oldMessage != null) {
+            msgList.remove(oldMessage)
             --subscribeSize
           }
           return true
         }
       }
       is ReplaceMessage -> {
-        val info = message.info
-        val group = info.group
+        val group = message.info.group
         val msgOld = uniqueMessages[group]
 
         if (msgOld != null) {
@@ -236,28 +230,27 @@ internal class MessageBox {
     val group = info.group
     val msgList = appendMessages[group]
 
-    return msgList != null && msgList.containsInfo(info)
+    return msgList != null && msgList.containsMessage(message)
   }
 
   /**
    * Returns [message] contains status
    */
   fun containsMessage(message: ReplaceMessage): Boolean {
-    val info = message.info
-    val group = info.group
+    val group = message.info.group
     val msgOld = uniqueMessages[group]
 
-    return msgOld?.info?.subscribe == info.subscribe
+    return msgOld != null && msgOld.subscribeEquals(message)
   }
 
   /**
    * Returns reverse append message contains status
    */
-  fun containsReverseAppendMessage(info: SubscribeInfo): Boolean {
-    val group = info.group
+  fun containsReverseAppendMessage(message: SubscribeMessage): Boolean {
+    val group = message.info.group
     val msgList = appendMessages[group]
 
-    return msgList != null && msgList.containsInfo(info)
+    return msgList != null && msgList.containsMessage(message)
   }
 
   /**
@@ -273,11 +266,11 @@ internal class MessageBox {
   /**
    * Returns reverse strict message contains status
    */
-  fun containsReverseStrictMessage(info: SubscribeInfo): Boolean {
-    val group = info.group
+  fun containsReverseStrictMessage(message: SubscribeMessage): Boolean {
+    val group = message.info.group
     val msgOld = uniqueMessages[group]
 
-    return msgOld != null && msgOld.strict && msgOld.info.subscribe == info.subscribe
+    return msgOld != null && msgOld.strict && msgOld.subscribeEquals(message)
   }
 
   /**
@@ -316,8 +309,8 @@ internal class MessageBox {
   private fun allAppendMessages(): List<SendMessage> {
     val messages = mutableListOf<SendMessage>()
 
-    for ((_, info) in appendMessages) {
-      messages.addAll(info.map { AppendMessage(it) })
+    for ((_, msgList) in appendMessages) {
+      messages.addAll(msgList)
     }
     return messages
   }

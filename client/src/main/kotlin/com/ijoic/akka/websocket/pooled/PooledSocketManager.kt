@@ -112,11 +112,11 @@ class PooledSocketManager(
 
               when(it) {
                 is ClearAppendMessage -> {
-                  oldChannel = activeChannels.reverseAppend(it.info)
+                  oldChannel = activeChannels.reverseAppend(it)
                 }
                 is ClearReplaceMessage -> {
                   oldChannel = if (it.strict) {
-                    activeChannels.reverseStrict(it.info)
+                    activeChannels.reverseStrict(it)
                   } else {
                     activeChannels.reverseReplace(it.info)
                   }
@@ -619,21 +619,21 @@ class PooledSocketManager(
 
     when(msg) {
       is AppendMessage -> {
-        oldChannel = channels.reverseAppend(msg.info)
+        oldChannel = channels.reverseAppend(msg)
       }
       is ClearAppendMessage -> {
-        oldChannel = channels.reverseAppend(msg.info)
+        oldChannel = channels.reverseAppend(msg)
       }
       is ReplaceMessage -> {
         if (msg.strict) {
-          return channels.reverseStrict(msg.info) ?: channels.minSubscribeStrictEmpty(msg.info.group)
+          return channels.reverseStrict(msg) ?: channels.minSubscribeStrictEmpty(msg.info.group)
         } else {
           oldChannel = channels.reverseReplace(msg.info)
         }
       }
       is ClearReplaceMessage -> {
         if (msg.strict) {
-          return channels.reverseStrict(msg.info)
+          return channels.reverseStrict(msg)
         } else {
           oldChannel = channels.reverseReplace(msg.info)
         }
@@ -677,8 +677,8 @@ class PooledSocketManager(
   /**
    * Returns reverse append channel or null
    */
-  private fun List<ChannelState>.reverseAppend(info: SubscribeInfo): ChannelState? {
-    return firstOrNull { it.messages.containsReverseAppendMessage(info) }
+  private fun List<ChannelState>.reverseAppend(message: SubscribeMessage): ChannelState? {
+    return firstOrNull { it.messages.containsReverseAppendMessage(message) }
   }
 
   /**
@@ -691,8 +691,8 @@ class PooledSocketManager(
   /**
    * Returns reverse strict channel or null
    */
-  private fun List<ChannelState>.reverseStrict(info: SubscribeInfo): ChannelState? {
-    return firstOrNull { it.messages.containsReverseStrictMessage(info) }
+  private fun List<ChannelState>.reverseStrict(message: SubscribeMessage): ChannelState? {
+    return firstOrNull { it.messages.containsReverseStrictMessage(message) }
   }
 
   /* -- messages :end -- */

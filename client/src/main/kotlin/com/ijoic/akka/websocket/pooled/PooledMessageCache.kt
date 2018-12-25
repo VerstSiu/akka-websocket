@@ -73,14 +73,14 @@ internal class PooledMessageCache {
           strictMessages[group] = it
         }
 
-        if (msgList.isEmpty() || !msgList.any { it.info.subscribe == message.info.subscribe }) {
+        if (msgList.isEmpty() || !msgList.any { it.subscribeEquals(message) }) {
           ++editCount
           ++strictSubscribeSize
           msgList.add(message)
         }
       }
       message is ClearReplaceMessage && message.strict -> {
-        removeStrictMessage(message.info)
+        removeStrictMessage(message)
       }
       else -> if (msgBox.addMessage(message)) {
         ++editCount
@@ -100,7 +100,7 @@ internal class PooledMessageCache {
    */
   private fun removeMessage(message: SendMessage) {
     if (message is ReplaceMessage && message.strict) {
-      removeStrictMessage(message.info)
+      removeStrictMessage(message)
     } else if (msgBox.removeMessage(message)) {
       ++editCount
     }
@@ -113,10 +113,10 @@ internal class PooledMessageCache {
     items.forEach(this::removeMessage)
   }
 
-  private fun removeStrictMessage(info: SubscribeInfo) {
-    val group = info.group
+  private fun removeStrictMessage(message: SubscribeMessage) {
+    val group = message.info.group
     val msgList = strictMessages[group]
-    val oldMessage = msgList?.firstOrNull { it.info.subscribe == info.subscribe }
+    val oldMessage = msgList?.firstOrNull { it.subscribeEquals(message) }
 
     if (oldMessage != null) {
       ++editCount
@@ -200,12 +200,12 @@ internal class PooledMessageCache {
         is AppendMessage -> if (msgBox.containsMessage(it)) {
           removedItems.add(it)
         }
-        is ClearAppendMessage -> if (!msgBox.containsReverseAppendMessage(it.info)) {
+        is ClearAppendMessage -> if (!msgBox.containsReverseAppendMessage(it)) {
           removedItems.add(it)
         }
         is ReplaceMessage -> {
           if (it.strict) {
-            if (containsStrictMessage(it.info)) {
+            if (containsStrictMessage(it)) {
               removedItems.add(it)
             }
           } else if (msgBox.containsMessage(it)) {
@@ -214,7 +214,7 @@ internal class PooledMessageCache {
         }
         is ClearReplaceMessage -> {
           if (it.strict) {
-            if (!containsStrictMessage(it.info)) {
+            if (!containsStrictMessage(it)) {
               removedItems.add(it)
             }
           } else if (!msgBox.containsReverseReplaceMessage(it.info)) {
@@ -241,12 +241,12 @@ internal class PooledMessageCache {
       is AppendMessage -> if (msgBox.containsMessage(message)) {
         return null
       }
-      is ClearAppendMessage -> if (!msgBox.containsReverseAppendMessage(message.info)) {
+      is ClearAppendMessage -> if (!msgBox.containsReverseAppendMessage(message)) {
         return null
       }
       is ReplaceMessage -> {
         if (message.strict) {
-          if (containsStrictMessage(message.info)) {
+          if (containsStrictMessage(message)) {
             return null
           }
         } else if (msgBox.containsMessage(message)) {
@@ -255,7 +255,7 @@ internal class PooledMessageCache {
       }
       is ClearReplaceMessage -> {
         if (message.strict) {
-          if (!containsStrictMessage(message.info)) {
+          if (!containsStrictMessage(message)) {
             return null
           }
         } else if (!msgBox.containsReverseReplaceMessage(message.info)) {
@@ -269,10 +269,11 @@ internal class PooledMessageCache {
   /**
    * Returns strict message contains status
    */
-  private fun containsStrictMessage(info: SubscribeInfo): Boolean {
-    val msgList = strictMessages[info.group]
+  private fun containsStrictMessage(message: SubscribeMessage): Boolean {
+    val group = message.info.group
+    val msgList = strictMessages[group]
 
-    return msgList != null && msgList.any { it.info.group == info.group && it.info.subscribe == info.subscribe }
+    return msgList != null && msgList.any { it.info.group == group && it.subscribeEquals(message) }
   }
 
   /**
