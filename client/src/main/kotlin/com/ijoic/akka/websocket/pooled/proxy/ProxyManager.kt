@@ -68,7 +68,30 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
     if (!proxyEnabled) {
       return null
     }
+    val proxyId = obtainAvailableProxyIdOrNull()
 
+    if (proxyId == null && !errorCountMap.isEmpty()) {
+      // decrease error count map with minActive for each item
+      val editCountMap = mutableMapOf<String, Int>()
+
+      for ((pid, count) in errorCountMap) {
+        val editCount = count - minActive
+
+        if (editCount > 0) {
+          editCountMap[pid] = editCount
+        }
+      }
+      errorCountMap.clear()
+
+      for ((pid, count) in editCountMap) {
+        errorCountMap[pid] = count
+      }
+      return obtainAvailableProxyIdOrNull()
+    }
+    return proxyId
+  }
+
+  private fun obtainAvailableProxyIdOrNull(): String? {
     return obtainIdleProxyIdOrNull() ?: obtainActiveProxyIdOrNull()
   }
 
@@ -100,7 +123,7 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
   }
 
   /**
-   * Wrap client options with proxy info related to [proxyId]
+   * Wrap client options with proxy info related to [item]
    *
    * Returns null if all proxies exceed the max-active connection size
    */
