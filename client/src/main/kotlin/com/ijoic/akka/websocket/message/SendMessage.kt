@@ -125,43 +125,43 @@ internal fun List<SendMessage>.autoBatch(): MetricsMessage {
 /**
  * Wrap current info as append message
  */
-fun SubscribeInfo.asAppendMessage(): AppendMessage {
-  return AppendMessage(this)
+fun SubscribeInfo.asAppendMessage(id: String? = null): AppendMessage {
+  return AppendMessage(this, id)
 }
 
 /**
  * Wrap current info as clear append message
  */
-fun SubscribeInfo.asClearAppend(): AppendMessage {
-  return AppendMessage(this)
+fun SubscribeInfo.asClearAppend(id: String? = null): AppendMessage {
+  return AppendMessage(this, id)
 }
 
 /**
  * Wrap current info as replace message
  */
-fun SubscribeInfo.asReplaceMessage(): ReplaceMessage {
-  return ReplaceMessage(this, strict = false)
+fun SubscribeInfo.asReplaceMessage(id: String? = null): ReplaceMessage {
+  return ReplaceMessage(this, false, id)
 }
 
 /**
  * Wrap current info as clear replace message
  */
-fun SubscribeInfo.asClearReplace(): ReplaceMessage {
-  return ReplaceMessage(this, strict = false)
+fun SubscribeInfo.asClearReplace(id: String? = null): ReplaceMessage {
+  return ReplaceMessage(this, false, id)
 }
 
 /**
  * Wrap current info as strict message
  */
-fun SubscribeInfo.asStrictMessage(): ReplaceMessage {
-  return ReplaceMessage(this, strict = true)
+fun SubscribeInfo.asStrictMessage(id: String? = null): ReplaceMessage {
+  return ReplaceMessage(this, true, id)
 }
 
 /**
  * Wrap current info as clear strict message
  */
-fun SubscribeInfo.asClearStrict(): ReplaceMessage {
-  return ReplaceMessage(this, strict = true)
+fun SubscribeInfo.asClearStrict(id: String? = null): ReplaceMessage {
+  return ReplaceMessage(this, true, id)
 }
 
 /* -- subscribe info extensions :end -- */
