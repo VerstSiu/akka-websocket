@@ -441,7 +441,10 @@ class SocketManager(
     items.forEach { item ->
       if (activeMessages.addMessage(item)) {
         when(item) {
-          is SubscribeMessage -> client.send(item.info.subscribe)
+          is AppendMessage -> client.send(item.info.subscribe)
+          is ReplaceMessage -> client.send(item.info.subscribe)
+          is ClearAppendMessage -> client.send(item.info.unsubscribe)
+          is ClearReplaceMessage -> client.send(item.info.unsubscribe)
           is QueueMessage -> client.send(item.message)
         }
       }
