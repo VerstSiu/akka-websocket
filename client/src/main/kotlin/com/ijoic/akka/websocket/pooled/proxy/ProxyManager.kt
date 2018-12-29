@@ -66,7 +66,7 @@ internal class ProxyManager<T>(config: ProxyConfig?) {
    */
   fun obtainProxyId(): String? {
     if (!proxyEnabled) {
-      return null
+      return ""
     }
     val proxyId = obtainAvailableProxyIdOrNull()
 

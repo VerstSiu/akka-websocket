@@ -1431,6 +1431,57 @@ class PooledSocketManagerTest {
     m6.expectNoMessage()
   }
 
+  @Test
+  fun testAndAndRemoveStrict() {
+    val receiver = probeOf()
+
+    val m1 = probeOf()
+    val m2 = probeOf()
+    val m3 = probeOf()
+
+    val manager = managerOf(receiver, listOf(m1, m2, m3), PooledConfig(
+      initConnectionSize = 2,
+      initSubscribe = 2,
+      minIdle = 1,
+      maxIdle = 1
+    ))
+    manager.requestConnect()
+
+    // prepare connect
+    m1.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m2.expectMsgClass(SocketManager.RequestConnect::class.java)
+    m3.expectMsgClass(SocketManager.RequestConnect::class.java)
+
+    manager.notifyConnected(m1)
+    m1.expectNoMessage()
+
+    manager.notifyConnected(m2)
+    m2.expectNoMessage()
+
+    manager.notifyConnected(m3)
+    m3.expectNoMessage()
+
+    val subscribeId = System.currentTimeMillis()
+    val sourceH1: () -> String = { "h1-$subscribeId" }
+    val sourceH2: () -> String = { "h2-$subscribeId" }
+    val sourceRem: () -> String = { "rem-$subscribeId" }
+    val msgStrict: (() -> String) -> SendMessage = { it().toStrict(unsubscribe = sourceRem()) }
+    val msgClearStrict: (() -> String) -> SendMessage = { it().toClearStrict(unsubscribe = sourceRem()) }
+
+    manager.tellBatchMessage(
+      msgStrict(sourceH1),
+      msgStrict(sourceH2)
+    )
+    m1.expectMsgClass(ReplaceMessage::class.java).checkStrict(sourceH1())
+    m2.expectMsgClass(ReplaceMessage::class.java).checkStrict(sourceH2())
+
+    manager.tellMessage(msgClearStrict(sourceH1))
+    m1.expectMsgClass(ClearReplaceMessage::class.java).checkStrict(sourceH1())
+
+    manager.tellMessage(msgClearStrict(sourceH2))
+    m2.expectMsgClass(ClearReplaceMessage::class.java).checkStrict(sourceH2())
+  }
+
   /* -- single step test cases :begin -- */
 
   @Test
