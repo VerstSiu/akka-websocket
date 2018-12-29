@@ -26,4 +26,9 @@ compileTestKotlin {
     kotlinOptions.jvmTarget = "1.8"
 }
 
-apply from: "../source-artifact.gradle"
+task packageSources(type: Jar, dependsOn: 'classes') {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+}
+
+artifacts { archives packageSources }
