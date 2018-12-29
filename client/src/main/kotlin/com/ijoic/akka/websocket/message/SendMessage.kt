@@ -132,8 +132,8 @@ fun SubscribeInfo.asAppendMessage(id: String? = null): AppendMessage {
 /**
  * Wrap current info as clear append message
  */
-fun SubscribeInfo.asClearAppend(id: String? = null): AppendMessage {
-  return AppendMessage(this, id)
+fun SubscribeInfo.asClearAppend(id: String? = null): ClearAppendMessage {
+  return ClearAppendMessage(this, id)
 }
 
 /**
@@ -146,8 +146,8 @@ fun SubscribeInfo.asReplaceMessage(id: String? = null): ReplaceMessage {
 /**
  * Wrap current info as clear replace message
  */
-fun SubscribeInfo.asClearReplace(id: String? = null): ReplaceMessage {
-  return ReplaceMessage(this, false, id)
+fun SubscribeInfo.asClearReplace(id: String? = null): ClearReplaceMessage {
+  return ClearReplaceMessage(this, false, id)
 }
 
 /**
@@ -160,8 +160,8 @@ fun SubscribeInfo.asStrictMessage(id: String? = null): ReplaceMessage {
 /**
  * Wrap current info as clear strict message
  */
-fun SubscribeInfo.asClearStrict(id: String? = null): ReplaceMessage {
-  return ReplaceMessage(this, true, id)
+fun SubscribeInfo.asClearStrict(id: String? = null): ClearReplaceMessage {
+  return ClearReplaceMessage(this, true, id)
 }
 
 /* -- subscribe info extensions :end -- */
